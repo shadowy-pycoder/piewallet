@@ -5,9 +5,10 @@ def reciprocal(n: int) -> int:
     return pow(n, -1, secp256k1.p_curve)
 
 
-def ec_add(p: tuple[int, int], q: tuple[int, int]) -> tuple[int, int]:
-    slope = (p[1] - q[1]) * reciprocal(p[0] - q[0])
-    x = pow(slope, 2) - p[0] - q[0]
+def ec_add(p: tuple[int, int]) -> tuple[int, int]:
+    slope = ((p[1] - secp256k1.gen_point[1]) *
+             reciprocal(p[0] - secp256k1.gen_point[0]))
+    x = pow(slope, 2) - p[0] - secp256k1.gen_point[0]
     y = slope * (p[0] - x) - p[1]
     return x % secp256k1.p_curve, y % secp256k1.p_curve
 
@@ -21,12 +22,10 @@ def ec_dup(p: tuple[int, int]) -> tuple[int, int]:
 
 def ec_mul(scalar: int) -> tuple[int, int]:
     scalarbin = bin(scalar)[2:]
-    current = secp256k1.gen_point
+    q = secp256k1.gen_point
     for i in range(1, len(scalarbin)):
-        current = ec_dup(current)
-        if scalarbin[i] == "1":
-            current = ec_add(current, secp256k1.gen_point)
-    return current
+        q = ec_dup(q) if scalarbin[i] == "0" else ec_add(ec_dup(q))
+    return q
 
 
 print(ec_mul(0xFF) == (12312385769684547396095365029355369071957339694349689622296638024179682296192,
