@@ -14,6 +14,20 @@ class PublicKey:
         if not valid_key(private_key):
             raise Exception('Invalid scalar/private key')
         self.private_key = private_key
+        self._address = None
+        self._public_key = None
+
+    @property
+    def address(self):
+        if self._address is None:
+            self._address = self.__address(bytes.fromhex(self.public_key))
+        return self._address
+
+    @property
+    def public_key(self):
+        if self._public_key is None:
+            self._public_key = self.__compute_public_key(uncompressed=False)
+        return self._public_key.hex()
 
     def __reciprocal(self, n: int) -> int:
         return pow(n, -1, secp256k1.p_curve)
@@ -43,15 +57,13 @@ class PublicKey:
     def __public_key(self):
         return self.__ec_mul(self.private_key)
 
-    def public_key(self, *, uncompressed=False):
+    def __compute_public_key(self, *, uncompressed=False):
         if uncompressed:
             return bytes.fromhex(f"04{self.__public_key()[0]:0>64x}{self.__public_key()[1]:0>64x}")
         odd = self.__public_key()[1] % 2 == 1
         return bytes.fromhex(f"03{self.__public_key()[0]:0>64x}") if odd else bytes.fromhex(f"02{self.__public_key()[0]:0>64x}")
 
-    def legacy_address(self, key: bytes = None) -> str:
-        if key is None:
-            key = self.public_key()
+    def __address(self, key: bytes = None) -> str:
         address = b'\x00' + ripemd160_sha256(key)
         return base58.b58encode(address + double_sha256(address)[:4]).decode("UTF-8")
 
@@ -73,8 +85,5 @@ def valid_key(key: int) -> bool:
 # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
 #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
 my_key = PublicKey(0xFF)
-private = my_key.private_key
-print(hex(private))
-pub_key = my_key.public_key(uncompressed=False)
-print(my_key.legacy_address())
-print(Address.mro())
+print(my_key.public_key)
+print(my_key.address)
