@@ -7,16 +7,27 @@ from functions.double_sha256 import double_sha256
 from functions.ripemd160_sha256 import ripemd160_sha256
 
 
+UNCOMPRESSED = False
+
+
+def valid_key(key: int) -> bool:
+    try:
+        key_h = int(key)
+    except (ValueError, TypeError):
+        return False
+    return not (key_h <= 0 or key_h >= secp256k1.n_curve)
+
+
 class PublicKey:
 
-    def __init__(self, private_key=None):
+    def __init__(self, private_key: int | None = None) -> None:
         if private_key is None:
             private_key = randbelow(secp256k1.n_curve)
         if not valid_key(private_key):
             raise Exception('Invalid scalar/private key')
-        self._private_key = private_key
-        self._address = None
-        self._public_key = None
+        self._private_key: int = private_key
+        self._address: str | None = None
+        self._public_key: bytes | None = None
 
     @property
     def address(self) -> str:
@@ -27,8 +38,9 @@ class PublicKey:
     @property
     def public_key(self) -> str:
         if self._public_key is None:
-            self._public_key = self.__compute_public_key(uncompressed=False)
-        return '0x' + self._public_key.hex()
+            self._public_key = self.__compute_public_key(
+                uncompressed=UNCOMPRESSED)
+        return f'0x{self._public_key.hex()}'
 
     @property
     def private_key(self) -> str:
@@ -62,7 +74,7 @@ class PublicKey:
     def __public_key(self) -> tuple[int, int]:
         return self.__ec_mul(self._private_key)
 
-    def __compute_public_key(self, *, uncompressed: bool = False) -> bytes:
+    def __compute_public_key(self, *, uncompressed: bool = UNCOMPRESSED) -> bytes:
         if uncompressed:
             return bytes.fromhex(f"04{self.__public_key()[0]:0>64x}{self.__public_key()[1]:0>64x}")
         odd = self.__public_key()[1] % 2 == 1
@@ -72,7 +84,7 @@ class PublicKey:
         address = b'\x00' + ripemd160_sha256(key)
         return base58.b58encode(address + double_sha256(address)[:4]).decode("UTF-8")
 
-    def to_wif(self, *, uncompressed: bool = False) -> str:
+    def to_wif(self, *, uncompressed: bool = UNCOMPRESSED) -> str:
         '''
         Converts a hexadecimal number to a WIF - private key
         '''
@@ -85,19 +97,12 @@ class Address(PublicKey):
     pass
 
 
-def valid_key(key: int) -> bool:
-    try:
-        key_h = int(key)
-    except (ValueError, TypeError):
-        return False
-    return not (key_h <= 0 or key_h >= secp256k1.n_curve)
-
-
 # print(__ec_mul(0xFF) == (12312385769684547396095365029355369071957339694349689622296638024179682296192,
 #       29045073188889159330506972844502087256824914692696728592611344825524969277689))
 # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
 #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
-my_key = PublicKey()
+my_key = PublicKey(
+    0x170d99345e5f5fd4bf46a580c1a600c71c4a4ed70f8b0c87a0f490b94de918bb)
 print(my_key.private_key)
 print(my_key.to_wif())
 print(my_key.public_key)
