@@ -85,7 +85,7 @@ class PublicKey:
 
     def to_wif(self, *, uncompressed: bool = UNCOMPRESSED) -> str:
         '''
-        Converts a hexadecimal number to a WIF - private key
+        Converts generated privkey to WIF
         '''
         privkey = bytes.fromhex(
             f"80{self.private_key[2:]:0>64}" if uncompressed else f"80{self.private_key[2:]:0>64}01")
@@ -103,6 +103,6 @@ class Address(PublicKey):
 my_key = PublicKey(
     0x170d99345e5f5fd4bf46a580c1a600c71c4a4ed70f8b0c87a0f490b94de918bb)
 print(my_key.private_key)
-print(my_key.to_wif())
+print(my_key.to_wif(uncompressed=True))
 print(my_key.public_key)
 print(my_key.address)
