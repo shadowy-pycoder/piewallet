@@ -88,7 +88,7 @@ class PublicKey:
         Converts a hexadecimal number to a WIF - private key
         '''
         privkey = bytes.fromhex(
-            f"80{self.private_key.lstrip('0x'):0>64}" if uncompressed else f"80{self.private_key.lstrip('0x'):0>64}01")
+            f"80{self.private_key[2:]:0>64}" if uncompressed else f"80{self.private_key[2:]:0>64}01")
         return base58.b58encode(privkey + double_sha256(privkey)[:4]).decode("UTF-8")
 
 
