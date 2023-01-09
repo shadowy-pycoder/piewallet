@@ -1,7 +1,9 @@
+import base58
+
 from curve_params import secp256k1
 from secrets import randbelow
-from functions.sha256 import sha256
-from functions.ripemd160 import ripemd160
+from functions.double_sha256 import double_sha256
+from functions.ripemd160_sha256 import ripemd160_sha256
 
 
 class PublicKey:
@@ -43,9 +45,15 @@ class PublicKey:
 
     def public_key(self, *, uncompressed=False):
         if uncompressed:
-            return f"04{self.__public_key()[0]:0>64x}{self.__public_key()[1]:0>64x}"
+            return bytes.fromhex(f"04{self.__public_key()[0]:0>64x}{self.__public_key()[1]:0>64x}")
         odd = self.__public_key()[1] % 2 == 1
-        return f"03{self.__public_key()[0]:0>64x}" if odd else f"02{self.__public_key()[0]:0>64x}"
+        return bytes.fromhex(f"03{self.__public_key()[0]:0>64x}") if odd else bytes.fromhex(f"02{self.__public_key()[0]:0>64x}")
+
+    def legacy_address(self, key: bytes = None) -> str:
+        if key is None:
+            key = self.public_key()
+        address = b'\x00' + ripemd160_sha256(key)
+        return base58.b58encode(address + double_sha256(address)[:4]).decode("UTF-8")
 
 
 class Address(PublicKey):
@@ -67,5 +75,6 @@ def valid_key(key: int) -> bool:
 my_key = PublicKey(0xFF)
 private = my_key.private_key
 print(hex(private))
-print(my_key.public_key(uncompressed=True))
+pub_key = my_key.public_key(uncompressed=False)
+print(my_key.legacy_address())
 print(Address.mro())
