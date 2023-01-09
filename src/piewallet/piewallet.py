@@ -1,7 +1,8 @@
+from secrets import randbelow
+
 import base58
 
 from curve_params import secp256k1
-from secrets import randbelow
 from functions.double_sha256 import double_sha256
 from functions.ripemd160_sha256 import ripemd160_sha256
 
@@ -31,7 +32,7 @@ class PublicKey:
 
     @property
     def private_key(self):
-        return hex(self._private_key)
+        return f'0x{self._private_key:0>64x}'
 
     def __reciprocal(self, n: int) -> int:
         return pow(n, -1, secp256k1.p_curve)
@@ -71,6 +72,14 @@ class PublicKey:
         address = b'\x00' + ripemd160_sha256(key)
         return base58.b58encode(address + double_sha256(address)[:4]).decode("UTF-8")
 
+    def to_wif(self, *, uncompressed: bool = False) -> str:
+        '''
+        Converts a hexadecimal number to a WIF - private key
+        '''
+        privkey = bytes.fromhex(
+            f"80{self.private_key.lstrip('0x'):0>64}" if uncompressed else f"80{self.private_key.lstrip('0x'):0>64}01")
+        return base58.b58encode(privkey + double_sha256(privkey)[:4]).decode("UTF-8")
+
 
 class Address(PublicKey):
     pass
@@ -90,5 +99,6 @@ def valid_key(key: int) -> bool:
 #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
 my_key = PublicKey(0xFF)
 print(my_key.private_key)
+print(my_key.to_wif())
 print(my_key.public_key)
 print(my_key.address)
