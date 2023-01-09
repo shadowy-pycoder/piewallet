@@ -1,5 +1,7 @@
 from curve_params import secp256k1
 from secrets import randbelow
+from functions.sha256 import sha256
+from functions.ripemd160 import ripemd160
 
 
 class PublicKey:
@@ -36,8 +38,18 @@ class PublicKey:
                  if scalarbin[i] == "1" else self.__ec_dup(q))
         return q
 
-    def public_key(self):
+    def __public_key(self):
         return self.__ec_mul(self.private_key)
+
+    def public_key(self, *, uncompressed=False):
+        if uncompressed:
+            return f"04{self.__public_key()[0]:0>64x}{self.__public_key()[1]:0>64x}"
+        odd = self.__public_key()[1] % 2 == 1
+        return f"03{self.__public_key()[0]:0>64x}" if odd else f"02{self.__public_key()[0]:0>64x}"
+
+
+class Address(PublicKey):
+    pass
 
 
 def valid_key(key: int) -> bool:
@@ -52,7 +64,8 @@ def valid_key(key: int) -> bool:
 #       29045073188889159330506972844502087256824914692696728592611344825524969277689))
 # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
 #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
-my_key = PublicKey()
+my_key = PublicKey(0xFF)
 private = my_key.private_key
 print(hex(private))
-print(my_key.public_key())
+print(my_key.public_key(uncompressed=True))
+print(Address.mro())
