@@ -13,21 +13,25 @@ class PublicKey:
             private_key = randbelow(secp256k1.n_curve)
         if not valid_key(private_key):
             raise Exception('Invalid scalar/private key')
-        self.private_key = private_key
+        self._private_key = private_key
         self._address = None
         self._public_key = None
 
     @property
     def address(self):
         if self._address is None:
-            self._address = self.__address(bytes.fromhex(self.public_key))
+            self._address = self.__address(bytes.fromhex(self.public_key[2:]))
         return self._address
 
     @property
     def public_key(self):
         if self._public_key is None:
             self._public_key = self.__compute_public_key(uncompressed=False)
-        return self._public_key.hex()
+        return '0x' + self._public_key.hex()
+
+    @property
+    def private_key(self):
+        return hex(self._private_key)
 
     def __reciprocal(self, n: int) -> int:
         return pow(n, -1, secp256k1.p_curve)
@@ -55,7 +59,7 @@ class PublicKey:
         return q
 
     def __public_key(self):
-        return self.__ec_mul(self.private_key)
+        return self.__ec_mul(self._private_key)
 
     def __compute_public_key(self, *, uncompressed=False):
         if uncompressed:
@@ -85,5 +89,6 @@ def valid_key(key: int) -> bool:
 # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
 #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
 my_key = PublicKey(0xFF)
+print(my_key.private_key)
 print(my_key.public_key)
 print(my_key.address)
