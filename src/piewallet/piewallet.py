@@ -38,8 +38,7 @@ class PublicKey:
     @property
     def public_key(self) -> str:
         if self._public_key is None:
-            self._public_key = self.__compute_public_key(
-                uncompressed=UNCOMPRESSED)
+            self._public_key = self.__compute_pubkey(uncompressed=UNCOMPRESSED)
         return f'0x{self._public_key.hex()}'
 
     @property
@@ -71,14 +70,14 @@ class PublicKey:
                  if scalarbin[i] == "1" else self.__ec_dup(q))
         return q
 
-    def __public_key(self) -> tuple[int, int]:
+    def __pubkey(self) -> tuple[int, int]:
         return self.__ec_mul(self._private_key)
 
-    def __compute_public_key(self, *, uncompressed: bool = UNCOMPRESSED) -> bytes:
+    def __compute_pubkey(self, *, uncompressed: bool = UNCOMPRESSED) -> bytes:
         if uncompressed:
-            return bytes.fromhex(f"04{self.__public_key()[0]:0>64x}{self.__public_key()[1]:0>64x}")
-        odd = self.__public_key()[1] % 2 == 1
-        return bytes.fromhex(f"03{self.__public_key()[0]:0>64x}") if odd else bytes.fromhex(f"02{self.__public_key()[0]:0>64x}")
+            return bytes.fromhex(f"04{self.__pubkey()[0]:0>64x}{self.__pubkey()[1]:0>64x}")
+        odd = self.__pubkey()[1] % 2 == 1
+        return bytes.fromhex(f"03{self.__pubkey()[0]:0>64x}") if odd else bytes.fromhex(f"02{self.__pubkey()[0]:0>64x}")
 
     def __address(self, key: bytes) -> str:
         address = b'\x00' + ripemd160_sha256(key)
