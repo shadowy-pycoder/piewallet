@@ -19,19 +19,19 @@ class PublicKey:
         self._public_key = None
 
     @property
-    def address(self):
+    def address(self) -> str:
         if self._address is None:
             self._address = self.__address(bytes.fromhex(self.public_key[2:]))
         return self._address
 
     @property
-    def public_key(self):
+    def public_key(self) -> str:
         if self._public_key is None:
             self._public_key = self.__compute_public_key(uncompressed=False)
         return '0x' + self._public_key.hex()
 
     @property
-    def private_key(self):
+    def private_key(self) -> str:
         return f'0x{self._private_key:0>64x}'
 
     def __reciprocal(self, n: int) -> int:
@@ -59,16 +59,16 @@ class PublicKey:
                  if scalarbin[i] == "1" else self.__ec_dup(q))
         return q
 
-    def __public_key(self):
+    def __public_key(self) -> tuple[int, int]:
         return self.__ec_mul(self._private_key)
 
-    def __compute_public_key(self, *, uncompressed=False):
+    def __compute_public_key(self, *, uncompressed: bool = False) -> bytes:
         if uncompressed:
             return bytes.fromhex(f"04{self.__public_key()[0]:0>64x}{self.__public_key()[1]:0>64x}")
         odd = self.__public_key()[1] % 2 == 1
         return bytes.fromhex(f"03{self.__public_key()[0]:0>64x}") if odd else bytes.fromhex(f"02{self.__public_key()[0]:0>64x}")
 
-    def __address(self, key: bytes = None) -> str:
+    def __address(self, key: bytes) -> str:
         address = b'\x00' + ripemd160_sha256(key)
         return base58.b58encode(address + double_sha256(address)[:4]).decode("UTF-8")
 
@@ -97,7 +97,7 @@ def valid_key(key: int) -> bool:
 #       29045073188889159330506972844502087256824914692696728592611344825524969277689))
 # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
 #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
-my_key = PublicKey(0xFF)
+my_key = PublicKey()
 print(my_key.private_key)
 print(my_key.to_wif())
 print(my_key.public_key)
