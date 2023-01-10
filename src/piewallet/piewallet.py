@@ -1,6 +1,7 @@
 from secrets import randbelow
 
 import base58
+import bech32
 
 from curve_params import secp256k1
 from functions.double_sha256 import double_sha256
@@ -32,14 +33,22 @@ class PublicKey:
 
     def __init__(self, private_key: int | None = None) -> None:
         self._private_key: int = PrivateKey(private_key).generate
-        self._address: str | None = None
         self._public_key: bytes | None = None
+        self._address: str | None = None
+        self._segwit_address: str | None = None
 
     @property
     def address(self) -> str:
         if self._address is None:
             self._address = self.__address(bytes.fromhex(self.public_key[2:]))
         return self._address
+
+    @property
+    def segwit_address(self) -> str:
+        if self._segwit_address is None:
+            self._segwit_address = self.__segwit_address(
+                bytes.fromhex(self.public_key[2:]))
+        return self._segwit_address
 
     @property
     def public_key(self) -> str:
@@ -89,6 +98,9 @@ class PublicKey:
         address = b'\x00' + ripemd160_sha256(key)
         return base58.b58encode(address + double_sha256(address)[:4]).decode("UTF-8")
 
+    def __segwit_address(self, key: bytes) -> str:
+        return bech32.encode('bc', 0x00, ripemd160_sha256(key))
+
     def wif(self, *, uncompressed: bool = False) -> str:
         '''
         Reveals a WIF-version of the generated private key
@@ -106,14 +118,9 @@ class Address(PublicKey):
 #       29045073188889159330506972844502087256824914692696728592611344825524969277689))
 # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
 #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
-my_key = PublicKey()
-my_key2 = PublicKey()
+my_key = PublicKey(
+    0xD7C795CD67F60B396A3A9E159D12CD0E6BB2D2BE2389E59061F8F20E3B8AA02E)
 print(my_key.private_key)
 print(my_key.wif(uncompressed=False))
 print(my_key.public_key)
-print(my_key.address)
-print(PrivateKey.valid_key(
-    0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F))
-
-my_key = PrivateKey()
-print(my_key.generate)
+print(my_key.segwit_address)
