@@ -3,7 +3,7 @@ from secrets import randbelow
 import base58
 import bech32
 
-from curve_params import secp256k1
+from curve_params import secp256k1, Point
 from functions.ripemd160_sha256 import ripemd160_sha256
 
 
@@ -62,36 +62,36 @@ class PublicKey:
     def __reciprocal(self, n: int) -> int:
         return pow(n, -1, secp256k1.p_curve)
 
-    def __ec_add(self, p: tuple[int, int]) -> tuple[int, int]:
-        slope = ((p[1] - secp256k1.gen_point[1]) *
-                 self.__reciprocal(p[0] - secp256k1.gen_point[0]))
-        x = pow(slope, 2) - p[0] - secp256k1.gen_point[0]
-        y = slope * (p[0] - x) - p[1]
-        return x % secp256k1.p_curve, y % secp256k1.p_curve
+    def __ec_add(self, p: Point) -> Point:
+        slope = ((p.y - secp256k1.gen_point.y) *
+                 self.__reciprocal(p.x - secp256k1.gen_point.x))
+        x = pow(slope, 2) - p.x - secp256k1.gen_point.x
+        y = slope * (p.x - x) - p.y
+        return Point(x % secp256k1.p_curve, y % secp256k1.p_curve)
 
-    def __ec_dup(self, p: tuple[int, int]) -> tuple[int, int]:
-        slope = ((3 * pow(p[0], 2) + secp256k1.a_curve)
-                 * self.__reciprocal(2 * p[1]))
-        x = pow(slope, 2) - 2 * p[0]
-        y = slope * (p[0] - x) - p[1]
-        return x % secp256k1.p_curve, y % secp256k1.p_curve
+    def __ec_dup(self, p: Point) -> Point:
+        slope = ((3 * pow(p.x, 2) + secp256k1.a_curve)
+                 * self.__reciprocal(2 * p.y))
+        x = pow(slope, 2) - 2 * p.x
+        y = slope * (p.x - x) - p.y
+        return Point(x % secp256k1.p_curve, y % secp256k1.p_curve)
 
-    def __ec_mul(self, scalar: int) -> tuple[int, int]:
+    def __ec_mul(self, scalar: int) -> Point:
         scalarbin = bin(scalar)[2:]
         q = secp256k1.gen_point
         for i in range(1, len(scalarbin)):
             q = (self.__ec_add(self.__ec_dup(q))
                  if scalarbin[i] == "1" else self.__ec_dup(q))
-        return q
+        return Point(q.x, q.y)
 
-    def __pubkey(self) -> tuple[int, int]:
+    def __pubkey(self) -> Point:
         return self.__ec_mul(self._private_key)
 
     def __compute_pubkey(self, *, uncompressed: bool = False) -> bytes:
         if uncompressed:
-            return bytes.fromhex(f"04{self.__pubkey()[0]:0>64x}{self.__pubkey()[1]:0>64x}")
-        odd = self.__pubkey()[1] & 1
-        return bytes.fromhex(f"03{self.__pubkey()[0]:0>64x}") if odd else bytes.fromhex(f"02{self.__pubkey()[0]:0>64x}")
+            return bytes.fromhex(f"04{self.__pubkey().x:0>64x}{self.__pubkey().y:0>64x}")
+        odd = self.__pubkey().y & 1
+        return bytes.fromhex(f"03{self.__pubkey().x:0>64x}") if odd else bytes.fromhex(f"02{self.__pubkey().x:0>64x}")
 
     def __address(self, key: bytes) -> str:
         address = b'\x00' + ripemd160_sha256(key)
