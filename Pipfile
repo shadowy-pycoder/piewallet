@@ -5,6 +5,7 @@ name = "pypi"
 
 [packages]
 base58 = "*"
+bech32 = "*"
 
 [dev-packages]
 autopep8 = "*"
