@@ -91,12 +91,12 @@ class PublicKey:
     def __compute_pubkey(self, *, uncompressed: bool = False) -> bytes:
         if uncompressed:
             return bytes.fromhex(f"04{self.__pubkey()[0]:0>64x}{self.__pubkey()[1]:0>64x}")
-        odd = self.__pubkey()[1] % 2 == 1
+        odd = self.__pubkey()[1] & 1
         return bytes.fromhex(f"03{self.__pubkey()[0]:0>64x}") if odd else bytes.fromhex(f"02{self.__pubkey()[0]:0>64x}")
 
     def __address(self, key: bytes) -> str:
         address = b'\x00' + ripemd160_sha256(key)
-        return base58.b58encode(address + double_sha256(address)[:4]).decode("UTF-8")
+        return base58.b58encode_check(address).decode("UTF-8")
 
     def __segwit_address(self, key: bytes) -> str:
         return bech32.encode('bc', 0x00, ripemd160_sha256(key))
@@ -119,8 +119,9 @@ class Address(PublicKey):
 # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
 #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
 my_key = PublicKey(
-    0xD7C795CD67F60B396A3A9E159D12CD0E6BB2D2BE2389E59061F8F20E3B8AA02E)
+    0xa34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)
 print(my_key.private_key)
 print(my_key.wif(uncompressed=False))
 print(my_key.public_key)
 print(my_key.segwit_address)
+print(my_key.address)
