@@ -4,7 +4,6 @@ import base58
 import bech32
 
 from curve_params import secp256k1
-from functions.double_sha256 import double_sha256
 from functions.ripemd160_sha256 import ripemd160_sha256
 
 
@@ -107,7 +106,7 @@ class PublicKey:
         '''
         privkey = bytes.fromhex(
             f"80{self.private_key[2:]:0>64}" if uncompressed else f"80{self.private_key[2:]:0>64}01")
-        return base58.b58encode(privkey + double_sha256(privkey)[:4]).decode("UTF-8")
+        return base58.b58encode_check(privkey).decode("UTF-8")
 
 
 class Address(PublicKey):
