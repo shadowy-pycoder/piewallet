@@ -11,13 +11,21 @@ from functions.ripemd160_sha256 import ripemd160_sha256
 FLAG = False  # change this to True to genearte only uncompressed addresses
 
 
+class PieWalletException(Exception):
+    '''Base exception for PieWallet'''
+
+
+class PrivateKeyError(PieWalletException):
+    '''Private key is out of allowed range'''
+
+
 class PrivateKey:
 
     def __init__(self, private_key: int | None = None) -> None:
         if private_key is None:
             private_key = randbelow(secp256k1.n_curve)
         if not self.valid_key(private_key):
-            raise Exception('Invalid scalar/private key')
+            raise PrivateKeyError('Invalid scalar/private key')
         self.generate = private_key
 
     @staticmethod
@@ -142,18 +150,20 @@ class Address(PublicKey):
     pass
 
 
-# print(__ec_mul(0xFF) == (12312385769684547396095365029355369071957339694349689622296638024179682296192,
-#       29045073188889159330506972844502087256824914692696728592611344825524969277689))
-# print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
-#     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
-my_key = PublicKey(
-    0xa34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)
-print(my_key.private_key)
-print(my_key.wif(uncompressed=False))
-print(my_key.public_key)
-print(my_key.segwit_address)
-print(my_key.address)
-priv_key = PrivateKey(0xFF)
-wif_key = priv_key.to_wif(uncompressed=True)
-int_key = priv_key.to_int(wif_key, hexlify=True)
-print(int_key)
+if __name__ == '__main__':
+    # print(__ec_mul(0xFF) == (12312385769684547396095365029355369071957339694349689622296638024179682296192,
+    #       29045073188889159330506972844502087256824914692696728592611344825524969277689))
+    # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
+    #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
+    my_key = PublicKey(
+        0xa34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)
+    print(my_key.private_key)
+    print(my_key.wif(uncompressed=False))
+    print(my_key.public_key)
+    print(my_key.segwit_address)
+    print(my_key.address)
+    priv_key = PrivateKey(
+        0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141)
+    wif_key = priv_key.to_wif(uncompressed=True)
+    int_key = priv_key.to_int(wif_key, hexlify=True)
+    print(int_key)
