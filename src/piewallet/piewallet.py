@@ -8,7 +8,7 @@ from functions.double_sha256 import double_sha256
 from functions.ripemd160_sha256 import ripemd160_sha256
 
 
-FLAG = False  # change this to True to genearte only uncompressed addresses
+FLAG = False  # change this to True to generate only uncompressed addresses
 
 
 class PieWalletException(Exception):
@@ -17,6 +17,10 @@ class PieWalletException(Exception):
 
 class PrivateKeyError(PieWalletException):
     '''Private key is out of allowed range'''
+
+
+class PointError(PieWalletException):
+    '''Point is not on an eliptic curve'''
 
 
 class PrivateKey:
@@ -90,7 +94,10 @@ class PublicKey:
     def public_key(self) -> str:
         if self._public_key is None:
             self._public_key = self.__compute_pubkey(uncompressed=FLAG)
-        return f'{self._public_key.hex()}'
+        if self.valid_point(self.__pubkey()):
+            return f'{self._public_key.hex()}'
+        else:
+            raise PointError('Point is not on curve')
 
     @property
     def private_key(self) -> str:
@@ -145,9 +152,10 @@ class PublicKey:
             f"80{self.private_key[2:]:0>64}" if uncompressed else f"80{self.private_key[2:]:0>64}01")
         return base58.b58encode_check(privkey).decode("UTF-8")
 
-
-class Address(PublicKey):
-    pass
+    @staticmethod
+    def valid_point(p: Point | tuple[int, int]) -> bool:
+        return (pow(p[1], 2) % secp256k1.p_curve ==
+                (pow(p[0], 3) + p[0] * secp256k1.a_curve + secp256k1.b_curve) % secp256k1.p_curve)
 
 
 if __name__ == '__main__':
@@ -155,15 +163,15 @@ if __name__ == '__main__':
     #       29045073188889159330506972844502087256824914692696728592611344825524969277689))
     # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
     #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
-    my_key = PublicKey(
-        0xa34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)
+    my_key = PublicKey(0xFF)
     print(my_key.private_key)
     print(my_key.wif(uncompressed=False))
     print(my_key.public_key)
     print(my_key.segwit_address)
     print(my_key.address)
-    priv_key = PrivateKey(
-        0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141)
-    wif_key = priv_key.to_wif(uncompressed=True)
-    int_key = priv_key.to_int(wif_key, hexlify=True)
-    print(int_key)
+    b = (12312385769684547396095365029355369071957339694349689622296638024179682296192,
+         29045073188889159330506972844502087256824914692696728592611344825524969277689)
+    print(my_key.valid_point(b))
+    c = Point(x=12312385769684547396095365029355369071957339694349689622296638024179682296192,
+              y=29045073188889159330506972844502087256824914692696728592611344825524969277689)
+    print(my_key.valid_point((c.x, c.y)))
