@@ -1,9 +1,10 @@
 from secrets import randbelow
 
 import base58
-import bech32
+import bech32  # type: ignore
 
 from curve_params import secp256k1, Point
+from functions.double_sha256 import double_sha256
 from functions.ripemd160_sha256 import ripemd160_sha256
 
 
@@ -27,6 +28,34 @@ class PrivateKey:
             return False
         return not (key_h <= 0 or key_h >= secp256k1.n_curve)
 
+    @staticmethod
+    def valid_checksum(version: bytes, private_key: bytes, checksum: bytes) -> bool:
+        return double_sha256(version + private_key)[:4] == checksum
+
+    @staticmethod
+    def to_bytes(wif: str) -> tuple[bytes, bytes, bytes]:
+        private_key = base58.b58decode(wif)
+        return private_key[:1], private_key[1:-4], private_key[-4:]
+
+    @staticmethod
+    def to_int(wif: str, *, hexlify: bool = False) -> int | str:
+        # https://en.bitcoin.it/wiki/Wallet_import_format
+        version, private_key, checksum = PrivateKey.to_bytes(wif)
+        if not PrivateKey.valid_checksum(version, private_key, checksum):
+            raise ValueError("Invalid WIF checksum")
+        private_key_int = int.from_bytes(private_key[:-1], 'big') if len(
+            private_key) == 33 else int.from_bytes(private_key, 'big')
+        if PrivateKey.valid_key(private_key_int):
+            if hexlify:
+                return f'0x{private_key_int:0>64x}'
+            return private_key_int
+        return -1
+
+    def to_wif(self, *, uncompressed: bool = False):
+        privkey = bytes.fromhex(
+            f"80{self.generate:0>64x}" if uncompressed else f"80{self.generate:0>64x}01")
+        return base58.b58encode_check(privkey).decode("UTF-8")
+
 
 class PublicKey:
 
@@ -39,21 +68,21 @@ class PublicKey:
     @property
     def address(self) -> str:
         if self._address is None:
-            self._address = self.__address(bytes.fromhex(self.public_key[2:]))
+            self._address = self.__address(bytes.fromhex(self.public_key))
         return self._address
 
     @property
     def segwit_address(self) -> str:
         if self._segwit_address is None:
             self._segwit_address = self.__segwit_address(
-                bytes.fromhex(self.public_key[2:]))
+                bytes.fromhex(self.public_key))
         return self._segwit_address
 
     @property
     def public_key(self) -> str:
         if self._public_key is None:
             self._public_key = self.__compute_pubkey(uncompressed=FLAG)
-        return f'0x{self._public_key.hex()}'
+        return f'{self._public_key.hex()}'
 
     @property
     def private_key(self) -> str:
@@ -124,3 +153,7 @@ print(my_key.wif(uncompressed=False))
 print(my_key.public_key)
 print(my_key.segwit_address)
 print(my_key.address)
+priv_key = PrivateKey(0xFF)
+wif_key = priv_key.to_wif(uncompressed=True)
+int_key = priv_key.to_int(wif_key, hexlify=True)
+print(int_key)

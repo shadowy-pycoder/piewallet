@@ -10,14 +10,17 @@ GEN_POINT = (0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
 
 
 class Point(NamedTuple):
+    '''
+    Point on an elliptic curve
+    '''
     x: int
     y: int
 
 
-G = Point(x=GEN_POINT[0], y=GEN_POINT[1])
-
-
 class EllipticCurve(NamedTuple):
+    '''
+    Elliptic curve with all the parameters to define it.
+    '''
     p_curve: int
     n_curve: int
     a_curve: int
@@ -26,4 +29,4 @@ class EllipticCurve(NamedTuple):
 
 
 secp256k1 = EllipticCurve(p_curve=P_CURVE, n_curve=N_CURVE,
-                          a_curve=A_CURVE, b_curve=B_CURVE, gen_point=G)
+                          a_curve=A_CURVE, b_curve=B_CURVE, gen_point=Point(x=GEN_POINT[0], y=GEN_POINT[1]))
