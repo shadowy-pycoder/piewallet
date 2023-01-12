@@ -75,7 +75,7 @@ class PublicKey:
         self.__address: str | None = None
         self.__nested_segwit_address: str | None = None
         self.__native_segwit_address: str | None = None
-        self.__uncompressed = uncompressed
+        self.__uncompressed: bool = uncompressed
 
     @property
     def address(self) -> str:
@@ -100,6 +100,7 @@ class PublicKey:
 
     @property
     def public_key(self) -> str:
+        '''Returns public key in HEX format'''
         if self.__public_key is None:
             self.__public_key = self.__create_pubkey(uncompressed=self.__uncompressed)
         if self.valid_point(self.__compute_pubkey()):
@@ -200,3 +201,5 @@ if __name__ == '__main__':
     # print(my_key.__private_key) #error
     print(my_key.nested_segwit_address)
     my_key._PublicKey__uncompressed = True
+    my_key2 = PublicKey(0xAA)
+    print(PublicKey.address.__doc__)
