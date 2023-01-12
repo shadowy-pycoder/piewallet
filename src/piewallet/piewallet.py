@@ -27,7 +27,11 @@ class PrivateKey:
             private_key = randbelow(secp256k1.n_curve)
         if not self.valid_key(private_key):
             raise PrivateKeyError('Invalid scalar/private key')
-        self.generate = private_key
+        self.__generate = private_key
+
+    @property
+    def generate(self):
+        return self.__generate
 
     @staticmethod
     def valid_key(key: int) -> bool:
@@ -183,10 +187,10 @@ if __name__ == '__main__':
     print(my_key.public_key)
     print(my_key.native_segwit_address)
     print(my_key.address)
-    my_privkey = PrivateKey(0xFF)
-    wif_key = my_privkey.to_wif()
-    print(my_privkey.to_wif())
-    print(my_privkey.to_bytes(wif_key))
+    my_privkey = PrivateKey()
+    # wif_key = my_privkey.to_wif()
+    # print(my_privkey.to_wif())
+    # print(my_privkey.to_bytes(wif_key))
     b = (12312385769684547396095365029355369071957339694349689622296638024179682296192,
          29045073188889159330506972844502087256824914692696728592611344825524969277689)
     print(my_key.valid_point(b))
@@ -213,3 +217,9 @@ if __name__ == '__main__':
     print(vars(my_key))
     print(vars())
     print([(key, value) for key, value in my_key.__dict__.items()])
+    print(vars(my_privkey))
+    my_key3 = PrivateKey(0xFF)
+    my_key3.__generate = 2
+    my_key.__address = 1
+    print(my_key.address)
+    print(vars(my_key3))
