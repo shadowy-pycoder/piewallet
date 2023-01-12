@@ -103,10 +103,7 @@ class PublicKey:
         '''Returns public key in HEX format'''
         if self.__public_key is None:
             self.__public_key = self.__create_pubkey(uncompressed=self.__uncompressed)
-        if self.valid_point(self.__compute_pubkey()):
-            return f'{self.__public_key.hex()}'
-        else:
-            raise PointError('Point is not on curve')
+        return f'{self.__public_key.hex()}'
 
     @property
     def private_key(self) -> str:
@@ -142,15 +139,16 @@ class PublicKey:
             q = self.__ec_add(self.__ec_dup(q)) if scalarbin[i] == "1" else self.__ec_dup(q)
         return Point(q.x, q.y)
 
-    def __compute_pubkey(self) -> Point:
-        return self.__ec_mul(self.__private_key)
-
     def __create_pubkey(self, *, uncompressed: bool = False) -> bytes:
-        if uncompressed:
-            return bytes.fromhex(f"04{self.__compute_pubkey().x:0>64x}{self.__compute_pubkey().y:0>64x}")
-        odd = self.__compute_pubkey().y & 1
-        return (bytes.fromhex(f"03{self.__compute_pubkey().x:0>64x}") if odd
-                else bytes.fromhex(f"02{self.__compute_pubkey().x:0>64x}"))
+        raw_pubkey = self.__ec_mul(self.__private_key)
+        if self.valid_point(raw_pubkey):
+            if uncompressed:
+                return bytes.fromhex(f"04{raw_pubkey.x:0>64x}{raw_pubkey.y:0>64x}")
+            odd = raw_pubkey.y & 1
+            return (bytes.fromhex(f"03{raw_pubkey.x:0>64x}") if odd
+                    else bytes.fromhex(f"02{raw_pubkey.x:0>64x}"))
+        else:
+            raise PointError('Point is not on curve')
 
     def __create_address(self, key: bytes) -> str:
         address = b'\x00' + ripemd160_sha256(key)
@@ -203,3 +201,15 @@ if __name__ == '__main__':
     my_key._PublicKey__uncompressed = True
     my_key2 = PublicKey(0xAA)
     print(PublicKey.address.__doc__)
+    print(my_key2.address)
+    print(my_key.address)
+    print(*[i for i in dir(my_key) if not i.startswith('_')], sep='\n')
+    print(getattr(my_key, 'address', []))
+    print(hasattr(my_key, 'generate'))
+    try:
+        setattr(my_key, 'private_key', 'hack_bitcoin')
+    except AttributeError:
+        print('Sorry, can\'t hack bitcoin')
+    print(vars(my_key))
+    print(vars())
+    print([(key, value) for key, value in my_key.__dict__.items()])
