@@ -69,43 +69,55 @@ class PrivateKey:
 class PublicKey:
 
     def __init__(self, private_key: int | None = None) -> None:
-        self._private_key: int = PrivateKey(private_key).generate
-        self._wif_private_key: str | None = None
-        self._public_key: bytes | None = None
-        self._address: str | None = None
-        self._segwit_address: str | None = None
+        self.__private_key: int = PrivateKey(private_key).generate
+        self.__wif_private_key: str | None = None
+        self.__public_key: bytes | None = None
+        self.__address: str | None = None
+        self.__nested_segwit_address: str | None = None
+        self.__native_segwit_address: str | None = None
         self.uncompressed = False
 
     @property
     def address(self) -> str:
-        if self._address is None:
-            self._address = self.__address(bytes.fromhex(self.public_key))
-        return self._address
+        '''Returns Legacy bitcoin address (P2PKH)'''
+        if self.__address is None:
+            self.__address = self.__create_address(bytes.fromhex(self.public_key))
+        return self.__address
 
     @property
-    def segwit_address(self) -> str:
-        if self._segwit_address is None:
-            self._segwit_address = self.__segwit_address(bytes.fromhex(self.public_key))
-        return self._segwit_address
+    def nested_segwit_address(self) -> str | None:
+        '''Returns nested Segwit bitcoin address (P2WPKH-P2SH)'''
+        if not self.uncompressed and self.__nested_segwit_address is None:
+            self.__nested_segwit_address = self.__create_nested_segwit(bytes.fromhex(self.public_key))
+        return self.__nested_segwit_address
+
+    @property
+    def native_segwit_address(self) -> str | None:
+        '''Returns native SegWit bitcoin address (P2WPKH)'''
+        if not self.uncompressed and self.__native_segwit_address is None:
+            self.__native_segwit_address = self.__create_native_segwit(bytes.fromhex(self.public_key))
+        return self.__native_segwit_address
 
     @property
     def public_key(self) -> str:
-        if self._public_key is None:
-            self._public_key = self.__compute_pubkey(uncompressed=self.uncompressed)
-        if self.valid_point(self.__pubkey()):
-            return f'{self._public_key.hex()}'
+        if self.__public_key is None:
+            self.__public_key = self.__create_pubkey(uncompressed=self.uncompressed)
+        if self.valid_point(self.__compute_pubkey()):
+            return f'{self.__public_key.hex()}'
         else:
             raise PointError('Point is not on curve')
 
     @property
     def private_key(self) -> str:
-        return f'0x{self._private_key:0>64x}'
+        '''Returns private key in HEX format'''
+        return f'0x{self.__private_key:0>64x}'
 
     @property
     def wif_private_key(self) -> str:
-        if self._wif_private_key is None:
-            self._wif_private_key = self.__to_wif(uncompressed=self.uncompressed)
-        return self._wif_private_key
+        '''Returns private key in WIF format'''
+        if self.__wif_private_key is None:
+            self.__wif_private_key = self.__to_wif(uncompressed=self.uncompressed)
+        return self.__wif_private_key
 
     def __reciprocal(self, n: int) -> int:
         return pow(n, -1, secp256k1.p_curve)
@@ -129,21 +141,25 @@ class PublicKey:
             q = self.__ec_add(self.__ec_dup(q)) if scalarbin[i] == "1" else self.__ec_dup(q)
         return Point(q.x, q.y)
 
-    def __pubkey(self) -> Point:
-        return self.__ec_mul(self._private_key)
+    def __compute_pubkey(self) -> Point:
+        return self.__ec_mul(self.__private_key)
 
-    def __compute_pubkey(self, *, uncompressed: bool = False) -> bytes:
+    def __create_pubkey(self, *, uncompressed: bool = False) -> bytes:
         if uncompressed:
-            return bytes.fromhex(f"04{self.__pubkey().x:0>64x}{self.__pubkey().y:0>64x}")
-        odd = self.__pubkey().y & 1
-        return (bytes.fromhex(f"03{self.__pubkey().x:0>64x}") if odd
-                else bytes.fromhex(f"02{self.__pubkey().x:0>64x}"))
+            return bytes.fromhex(f"04{self.__compute_pubkey().x:0>64x}{self.__compute_pubkey().y:0>64x}")
+        odd = self.__compute_pubkey().y & 1
+        return (bytes.fromhex(f"03{self.__compute_pubkey().x:0>64x}") if odd
+                else bytes.fromhex(f"02{self.__compute_pubkey().x:0>64x}"))
 
-    def __address(self, key: bytes) -> str:
+    def __create_address(self, key: bytes) -> str:
         address = b'\x00' + ripemd160_sha256(key)
         return base58.b58encode_check(address).decode("UTF-8")
 
-    def __segwit_address(self, key: bytes) -> str:
+    def __create_nested_segwit(self, key: bytes) -> str:
+        address = b'\x05' + ripemd160_sha256(b'\x00\x14' + ripemd160_sha256(key))
+        return base58.b58encode_check(address).decode("UTF-8")
+
+    def __create_native_segwit(self, key: bytes) -> str:
         return bech32.encode('bc', 0x00, ripemd160_sha256(key))
 
     def __to_wif(self, *, uncompressed: bool = False) -> str:
@@ -162,18 +178,26 @@ if __name__ == '__main__':
     #       29045073188889159330506972844502087256824914692696728592611344825524969277689))
     # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
     #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
-    my_key = PublicKey(0xFF)
-    my_key.uncompressed = True
+    my_key = PublicKey(0x123E89D3EA1F9B0D8A6DEAEB0D81882541373153263C884ED1CC827B80E62DE8)
+    my_key.uncompressed = False
     print(my_key.private_key)
     print(my_key.wif_private_key)
     print(my_key.public_key)
-    print(my_key.segwit_address)
+    print(my_key.native_segwit_address)
     print(my_key.address)
     my_privkey = PrivateKey(0xFF)
+    wif_key = my_privkey.to_wif()
     print(my_privkey.to_wif())
+    print(my_privkey.to_bytes(wif_key))
     b = (12312385769684547396095365029355369071957339694349689622296638024179682296192,
          29045073188889159330506972844502087256824914692696728592611344825524969277689)
     print(my_key.valid_point(b))
     c = Point(x=12312385769684547396095365029355369071957339694349689622296638024179682296192,
               y=29045073188889159330506972844502087256824914692696728592611344825524969277689)
     print(my_key.valid_point((c.x, c.y)))
+    print(my_key.address)
+    print(my_key.address)
+    # my_key.address = 'B'
+    # print(my_key.__private_key) #error
+    print(my_key.nested_segwit_address)
+    my_key.wif_private_key
