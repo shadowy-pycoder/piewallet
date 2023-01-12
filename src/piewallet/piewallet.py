@@ -20,7 +20,7 @@ class PrivateKeyError(PieWalletException):
 
 
 class PointError(PieWalletException):
-    '''Point is not on an eliptic curve'''
+    '''Point is not on an elliptic curve'''
 
 
 class PrivateKey:
@@ -55,8 +55,8 @@ class PrivateKey:
         version, private_key, checksum = PrivateKey.to_bytes(wif)
         if not PrivateKey.valid_checksum(version, private_key, checksum):
             raise ValueError("Invalid WIF checksum")
-        private_key_int = int.from_bytes(private_key[:-1], 'big') if len(
-            private_key) == 33 else int.from_bytes(private_key, 'big')
+        private_key_int = int.from_bytes(
+            private_key[:-1], 'big') if len(private_key) == 33 else int.from_bytes(private_key, 'big')
         if PrivateKey.valid_key(private_key_int):
             if hexlify:
                 return f'0x{private_key_int:0>64x}'
@@ -73,9 +73,11 @@ class PublicKey:
 
     def __init__(self, private_key: int | None = None) -> None:
         self._private_key: int = PrivateKey(private_key).generate
+        self._wif_private_key: str | None = None
         self._public_key: bytes | None = None
         self._address: str | None = None
         self._segwit_address: str | None = None
+        self.uncompressed = False
 
     @property
     def address(self) -> str:
@@ -86,14 +88,13 @@ class PublicKey:
     @property
     def segwit_address(self) -> str:
         if self._segwit_address is None:
-            self._segwit_address = self.__segwit_address(
-                bytes.fromhex(self.public_key))
+            self._segwit_address = self.__segwit_address(bytes.fromhex(self.public_key))
         return self._segwit_address
 
     @property
     def public_key(self) -> str:
         if self._public_key is None:
-            self._public_key = self.__compute_pubkey(uncompressed=FLAG)
+            self._public_key = self.__compute_pubkey(uncompressed=self.uncompressed)
         if self.valid_point(self.__pubkey()):
             return f'{self._public_key.hex()}'
         else:
@@ -103,19 +104,23 @@ class PublicKey:
     def private_key(self) -> str:
         return f'0x{self._private_key:0>64x}'
 
+    @property
+    def wif_private_key(self) -> str:
+        if self._wif_private_key is None:
+            self._wif_private_key = self.__to_wif(uncompressed=self.uncompressed)
+        return self._wif_private_key
+
     def __reciprocal(self, n: int) -> int:
         return pow(n, -1, secp256k1.p_curve)
 
     def __ec_add(self, p: Point) -> Point:
-        slope = ((p.y - secp256k1.gen_point.y) *
-                 self.__reciprocal(p.x - secp256k1.gen_point.x))
+        slope = (p.y - secp256k1.gen_point.y) * self.__reciprocal(p.x - secp256k1.gen_point.x)
         x = pow(slope, 2) - p.x - secp256k1.gen_point.x
         y = slope * (p.x - x) - p.y
         return Point(x % secp256k1.p_curve, y % secp256k1.p_curve)
 
     def __ec_dup(self, p: Point) -> Point:
-        slope = ((3 * pow(p.x, 2) + secp256k1.a_curve)
-                 * self.__reciprocal(2 * p.y))
+        slope = (3 * pow(p.x, 2) + secp256k1.a_curve) * self.__reciprocal(2 * p.y)
         x = pow(slope, 2) - 2 * p.x
         y = slope * (p.x - x) - p.y
         return Point(x % secp256k1.p_curve, y % secp256k1.p_curve)
@@ -124,8 +129,7 @@ class PublicKey:
         scalarbin = bin(scalar)[2:]
         q = secp256k1.gen_point
         for i in range(1, len(scalarbin)):
-            q = (self.__ec_add(self.__ec_dup(q))
-                 if scalarbin[i] == "1" else self.__ec_dup(q))
+            q = self.__ec_add(self.__ec_dup(q)) if scalarbin[i] == "1" else self.__ec_dup(q)
         return Point(q.x, q.y)
 
     def __pubkey(self) -> Point:
@@ -144,10 +148,7 @@ class PublicKey:
     def __segwit_address(self, key: bytes) -> str:
         return bech32.encode('bc', 0x00, ripemd160_sha256(key))
 
-    def wif(self, *, uncompressed: bool = False) -> str:
-        '''
-        Reveals a WIF-version of the generated private key
-        '''
+    def __to_wif(self, *, uncompressed: bool = False) -> str:
         privkey = bytes.fromhex(
             f"80{self.private_key[2:]:0>64}" if uncompressed else f"80{self.private_key[2:]:0>64}01")
         return base58.b58encode_check(privkey).decode("UTF-8")
@@ -164,11 +165,14 @@ if __name__ == '__main__':
     # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
     #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
     my_key = PublicKey(0xFF)
+    my_key.uncompressed = True
     print(my_key.private_key)
-    print(my_key.wif(uncompressed=False))
+    print(my_key.wif_private_key)
     print(my_key.public_key)
     print(my_key.segwit_address)
     print(my_key.address)
+    my_privkey = PrivateKey(0xFF)
+    print(my_privkey.to_wif())
     b = (12312385769684547396095365029355369071957339694349689622296638024179682296192,
          29045073188889159330506972844502087256824914692696728592611344825524969277689)
     print(my_key.valid_point(b))
