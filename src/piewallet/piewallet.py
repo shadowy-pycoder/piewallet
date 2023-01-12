@@ -68,14 +68,14 @@ class PrivateKey:
 
 class PublicKey:
 
-    def __init__(self, private_key: int | None = None) -> None:
+    def __init__(self, private_key: int | None = None, *, uncompressed: bool = False) -> None:
         self.__private_key: int = PrivateKey(private_key).generate
         self.__wif_private_key: str | None = None
         self.__public_key: bytes | None = None
         self.__address: str | None = None
         self.__nested_segwit_address: str | None = None
         self.__native_segwit_address: str | None = None
-        self.uncompressed = False
+        self.__uncompressed = uncompressed
 
     @property
     def address(self) -> str:
@@ -87,21 +87,21 @@ class PublicKey:
     @property
     def nested_segwit_address(self) -> str | None:
         '''Returns nested Segwit bitcoin address (P2WPKH-P2SH)'''
-        if not self.uncompressed and self.__nested_segwit_address is None:
+        if not self.__uncompressed and self.__nested_segwit_address is None:
             self.__nested_segwit_address = self.__create_nested_segwit(bytes.fromhex(self.public_key))
         return self.__nested_segwit_address
 
     @property
     def native_segwit_address(self) -> str | None:
         '''Returns native SegWit bitcoin address (P2WPKH)'''
-        if not self.uncompressed and self.__native_segwit_address is None:
+        if not self.__uncompressed and self.__native_segwit_address is None:
             self.__native_segwit_address = self.__create_native_segwit(bytes.fromhex(self.public_key))
         return self.__native_segwit_address
 
     @property
     def public_key(self) -> str:
         if self.__public_key is None:
-            self.__public_key = self.__create_pubkey(uncompressed=self.uncompressed)
+            self.__public_key = self.__create_pubkey(uncompressed=self.__uncompressed)
         if self.valid_point(self.__compute_pubkey()):
             return f'{self.__public_key.hex()}'
         else:
@@ -116,7 +116,7 @@ class PublicKey:
     def wif_private_key(self) -> str:
         '''Returns private key in WIF format'''
         if self.__wif_private_key is None:
-            self.__wif_private_key = self.__to_wif(uncompressed=self.uncompressed)
+            self.__wif_private_key = self.__to_wif(uncompressed=self.__uncompressed)
         return self.__wif_private_key
 
     def __reciprocal(self, n: int) -> int:
@@ -178,8 +178,7 @@ if __name__ == '__main__':
     #       29045073188889159330506972844502087256824914692696728592611344825524969277689))
     # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
     #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
-    my_key = PublicKey(0x123E89D3EA1F9B0D8A6DEAEB0D81882541373153263C884ED1CC827B80E62DE8)
-    my_key.uncompressed = False
+    my_key = PublicKey(0xFF, uncompressed=False)
     print(my_key.private_key)
     print(my_key.wif_private_key)
     print(my_key.public_key)
@@ -200,4 +199,4 @@ if __name__ == '__main__':
     # my_key.address = 'B'
     # print(my_key.__private_key) #error
     print(my_key.nested_segwit_address)
-    my_key.wif_private_key
+    my_key._PublicKey__uncompressed = True
