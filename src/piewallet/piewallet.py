@@ -8,9 +8,6 @@ from functions.double_sha256 import double_sha256
 from functions.ripemd160_sha256 import ripemd160_sha256
 
 
-FLAG = False  # change this to True to generate only uncompressed addresses
-
-
 class PieWalletException(Exception):
     '''Base exception for PieWallet'''
 
@@ -139,7 +136,8 @@ class PublicKey:
         if uncompressed:
             return bytes.fromhex(f"04{self.__pubkey().x:0>64x}{self.__pubkey().y:0>64x}")
         odd = self.__pubkey().y & 1
-        return bytes.fromhex(f"03{self.__pubkey().x:0>64x}") if odd else bytes.fromhex(f"02{self.__pubkey().x:0>64x}")
+        return (bytes.fromhex(f"03{self.__pubkey().x:0>64x}") if odd
+                else bytes.fromhex(f"02{self.__pubkey().x:0>64x}"))
 
     def __address(self, key: bytes) -> str:
         address = b'\x00' + ripemd160_sha256(key)
