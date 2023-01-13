@@ -28,6 +28,7 @@ class PrivateKey:
         if not self.valid_key(private_key):
             raise PrivateKeyError('Invalid scalar/private key')
         self.__generate = private_key
+        self.__wif_private_key: str | None = None
 
     @property
     def generate(self):
@@ -36,7 +37,9 @@ class PrivateKey:
     @property
     def wif_private_key(self) -> str:
         '''Returns private key in WIF format'''
-        return self.to_wif(self.generate)
+        if self.__wif_private_key is None:
+            self.__wif_private_key = self.to_wif(self.generate)
+        return self.__wif_private_key
 
     @staticmethod
     def valid_key(key: int) -> bool:
@@ -239,7 +242,7 @@ if __name__ == '__main__':
     print(my_key.address)
     print(vars(my_key3))
     my_key4 = PrivateKey()
-    my_key4.wif_private_key
+    print(my_key4.wif_private_key)
     print(my_key4)
     print(my_key)
     print(PrivateKey().to_wif(0xff))
