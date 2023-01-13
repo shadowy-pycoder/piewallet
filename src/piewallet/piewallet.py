@@ -44,10 +44,9 @@ class PrivateKey:
     @staticmethod
     def valid_key(key: int) -> bool:
         try:
-            key_h = int(key)
-        except (ValueError, TypeError):
+            return not (key <= 0 or key >= secp256k1.n_curve)
+        except TypeError:
             return False
-        return not (key_h <= 0 or key_h >= secp256k1.n_curve)
 
     def __repr__(self):
         return f"PrivateKey({hex(self.generate)[:4]}...)"
@@ -58,31 +57,34 @@ class PrivateKey:
 
     @staticmethod
     def to_bytes(wif: str) -> tuple[bytes, bytes, bytes]:
+        if not isinstance(wif, str):
+            raise PrivateKeyError('must be in WIF format')
         private_key = base58.b58decode(wif)
         return private_key[:1], private_key[1:-4], private_key[-4:]
 
     @staticmethod
     def to_int(wif: str, *, hexlify: bool = False) -> int | str:
         # https://en.bitcoin.it/wiki/Wallet_import_format
+        if not isinstance(wif, str):
+            raise PrivateKeyError('must be in WIF format')
         version, private_key, checksum = PrivateKey.to_bytes(wif)
         if not PrivateKey.valid_checksum(version, private_key, checksum):
-            raise ValueError("Invalid WIF checksum")
+            raise PrivateKeyError('invalid WIF checksum')
         private_key_int = int.from_bytes(
             private_key[:-1], 'big') if len(private_key) == 33 else int.from_bytes(private_key, 'big')
         if PrivateKey.valid_key(private_key_int):
             if hexlify:
                 return f'0x{private_key_int:0>64x}'
             return private_key_int
-        return -1
+        return
 
     @staticmethod
     def to_wif(key: int, *, uncompressed: bool = False):
         '''Returns private key in WIF format'''
-        if PrivateKey.valid_key(key):
-            privkey = bytes.fromhex(f"80{key:0>64x}" if uncompressed else f"80{key:0>64x}01")
-            return base58.b58encode_check(privkey).decode("UTF-8")
-        else:
+        if not PrivateKey.valid_key(key):
             raise PrivateKeyError('Invalid scalar/private key')
+        privkey = bytes.fromhex(f"80{key:0>64x}" if uncompressed else f"80{key:0>64x}01")
+        return base58.b58encode_check(privkey).decode("UTF-8")
 
 
 class PublicKey:
@@ -105,14 +107,22 @@ class PublicKey:
 
     @property
     def nested_segwit_address(self) -> str | None:
-        '''Returns nested Segwit bitcoin address (P2WPKH-P2SH)'''
+        '''
+        Returns nested Segwit bitcoin address (P2WPKH-P2SH),
+
+        Returns None for uncompressed public keys
+        '''
         if not self.__uncompressed and self.__nested_segwit_address is None:
             self.__nested_segwit_address = self.__create_nested_segwit(bytes.fromhex(self.public_key))
         return self.__nested_segwit_address
 
     @property
     def native_segwit_address(self) -> str | None:
-        '''Returns native SegWit bitcoin address (P2WPKH)'''
+        '''
+        Returns native SegWit bitcoin address (P2WPKH),
+
+        Returns None for uncompressed public keys
+        '''
         if not self.__uncompressed and self.__native_segwit_address is None:
             self.__native_segwit_address = self.__create_native_segwit(bytes.fromhex(self.public_key))
         return self.__native_segwit_address
@@ -163,14 +173,13 @@ class PublicKey:
 
     def __create_pubkey(self, *, uncompressed: bool = False) -> bytes:
         raw_pubkey = self.__ec_mul(self.__private_key)
-        if self.valid_point(raw_pubkey):
-            if uncompressed:
-                return bytes.fromhex(f"04{raw_pubkey.x:0>64x}{raw_pubkey.y:0>64x}")
-            odd = raw_pubkey.y & 1
-            return (bytes.fromhex(f"03{raw_pubkey.x:0>64x}") if odd
-                    else bytes.fromhex(f"02{raw_pubkey.x:0>64x}"))
-        else:
+        if not self.valid_point(raw_pubkey):
             raise PointError('Point is not on curve')
+        if uncompressed:
+            return bytes.fromhex(f"04{raw_pubkey.x:0>64x}{raw_pubkey.y:0>64x}")
+        odd = raw_pubkey.y & 1
+        return (bytes.fromhex(f"03{raw_pubkey.x:0>64x}") if odd
+                else bytes.fromhex(f"02{raw_pubkey.x:0>64x}"))
 
     def __create_address(self, key: bytes) -> str:
         address = b'\x00' + ripemd160_sha256(key)
@@ -190,8 +199,12 @@ class PublicKey:
 
     @staticmethod
     def valid_point(p: Point | tuple[int, int]) -> bool:
-        return (pow(p[1], 2) % secp256k1.p_curve ==
-                (pow(p[0], 3) + p[0] * secp256k1.a_curve + secp256k1.b_curve) % secp256k1.p_curve)
+        '''Checks if a given point belongs to secp256k1 elliptic curve'''
+        try:
+            return (pow(p[1], 2) % secp256k1.p_curve ==
+                    (pow(p[0], 3) + p[0] * secp256k1.a_curve + secp256k1.b_curve) % secp256k1.p_curve)
+        except TypeError:  # Exception is raised when given arguments are invalid (non-integers)
+            return False  # which also means point is not on curve
 
 
 if __name__ == '__main__':
@@ -236,7 +249,7 @@ if __name__ == '__main__':
     print(vars())
     print([(key, value) for key, value in my_key.__dict__.items()])
     print(vars(my_privkey))
-    my_key3 = PrivateKey(0xFF)
+    my_key3 = PrivateKey(0xAA)
     my_key3.__generate = 2
     my_key.__address = 1
     print(my_key.address)
@@ -246,3 +259,5 @@ if __name__ == '__main__':
     print(my_key4)
     print(my_key)
     print(PrivateKey().to_wif(0xff))
+    print(my_key.valid_point(c))
+    print(pow(0xFF, 1))
