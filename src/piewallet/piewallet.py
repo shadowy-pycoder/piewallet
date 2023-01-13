@@ -32,6 +32,7 @@ class PrivateKey:
 
     @property
     def generate(self):
+        '''Returns private key (generated or user-supplied)'''
         return self.__generate
 
     @property
@@ -43,6 +44,7 @@ class PrivateKey:
 
     @staticmethod
     def valid_key(key: int) -> bool:
+        '''Checks if an integer is within allowed range'''
         try:
             return not (key <= 0 or key >= secp256k1.n_curve)
         except TypeError:
@@ -57,6 +59,7 @@ class PrivateKey:
 
     @staticmethod
     def to_bytes(wif: str) -> tuple[bytes, bytes, bytes]:
+        '''Converts WIF private key to bytes'''
         if not isinstance(wif, str):
             raise PrivateKeyError('must be in WIF format')
         private_key = base58.b58decode(wif)
@@ -64,7 +67,7 @@ class PrivateKey:
 
     @staticmethod
     def to_int(wif: str, *, hexlify: bool = False) -> int | str:
-        # https://en.bitcoin.it/wiki/Wallet_import_format
+        '''Converts WIF private key to integer'''
         if not isinstance(wif, str):
             raise PrivateKeyError('must be in WIF format')
         version, private_key, checksum = PrivateKey.to_bytes(wif)
@@ -76,11 +79,11 @@ class PrivateKey:
             if hexlify:
                 return f'0x{private_key_int:0>64x}'
             return private_key_int
-        return
+        return -1
 
     @staticmethod
     def to_wif(key: int, *, uncompressed: bool = False):
-        '''Returns private key in WIF format'''
+        '''Converts private key from integer to WIF format'''
         if not PrivateKey.valid_key(key):
             raise PrivateKeyError('Invalid scalar/private key')
         privkey = bytes.fromhex(f"80{key:0>64x}" if uncompressed else f"80{key:0>64x}01")
