@@ -33,6 +33,11 @@ class PrivateKey:
     def generate(self):
         return self.__generate
 
+    @property
+    def wif_private_key(self) -> str:
+        '''Returns private key in WIF format'''
+        return self.to_wif(self.generate)
+
     @staticmethod
     def valid_key(key: int) -> bool:
         try:
@@ -40,6 +45,9 @@ class PrivateKey:
         except (ValueError, TypeError):
             return False
         return not (key_h <= 0 or key_h >= secp256k1.n_curve)
+
+    def __repr__(self):
+        return f"PrivateKey({hex(self.generate)[:4]}...)"
 
     @staticmethod
     def valid_checksum(version: bytes, private_key: bytes, checksum: bytes) -> bool:
@@ -64,10 +72,14 @@ class PrivateKey:
             return private_key_int
         return -1
 
-    def to_wif(self, *, uncompressed: bool = False):
-        privkey = bytes.fromhex(
-            f"80{self.generate:0>64x}" if uncompressed else f"80{self.generate:0>64x}01")
-        return base58.b58encode_check(privkey).decode("UTF-8")
+    @staticmethod
+    def to_wif(key: int, *, uncompressed: bool = False):
+        '''Returns private key in WIF format'''
+        if PrivateKey.valid_key(key):
+            privkey = bytes.fromhex(f"80{key:0>64x}" if uncompressed else f"80{key:0>64x}01")
+            return base58.b58encode_check(privkey).decode("UTF-8")
+        else:
+            raise PrivateKeyError('Invalid scalar/private key')
 
 
 class PublicKey:
@@ -120,6 +132,9 @@ class PublicKey:
         if self.__wif_private_key is None:
             self.__wif_private_key = self.__to_wif(uncompressed=self.__uncompressed)
         return self.__wif_private_key
+
+    def __repr__(self):
+        return f"PublicKey({self.private_key[:4]}..., uncompressed={self.__uncompressed})"
 
     def __reciprocal(self, n: int) -> int:
         return pow(n, -1, secp256k1.p_curve)
@@ -181,7 +196,7 @@ if __name__ == '__main__':
     #       29045073188889159330506972844502087256824914692696728592611344825524969277689))
     # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
     #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
-    my_key = PublicKey(0xFF, uncompressed=False)
+    my_key = PublicKey(0xFF)
     print(my_key.private_key)
     print(my_key.wif_private_key)
     print(my_key.public_key)
@@ -202,7 +217,7 @@ if __name__ == '__main__':
     # my_key.address = 'B'
     # print(my_key.__private_key) #error
     print(my_key.nested_segwit_address)
-    my_key._PublicKey__uncompressed = True
+    my_key._PublicKey__uncompressed = False
     my_key2 = PublicKey(0xAA)
     print(PublicKey.address.__doc__)
     print(my_key2.address)
@@ -223,3 +238,8 @@ if __name__ == '__main__':
     my_key.__address = 1
     print(my_key.address)
     print(vars(my_key3))
+    my_key4 = PrivateKey()
+    my_key4.wif_private_key
+    print(my_key4)
+    print(my_key)
+    print(PrivateKey().to_wif(0xff))
