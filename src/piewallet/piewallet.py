@@ -45,13 +45,12 @@ class PrivateKey:
     @staticmethod
     def valid_key(key: int) -> bool:
         '''Checks if an integer is within allowed range'''
-        try:
-            return not (key <= 0 or key >= secp256k1.n_curve)
-        except TypeError:
-            return False
+        return isinstance(key, int) and not (key <= 0 or key >= secp256k1.n_curve)
 
-    def __repr__(self):
-        return f"PrivateKey({hex(self.generate)[:4]}...)"
+    def __repr__(self) -> str:
+        cls_name = self.__class__.__name__
+        key = f'0x{self.generate:0>64x}'
+        return f"{cls_name}({key[:4]}...{key[-4:]})"
 
     @staticmethod
     def valid_checksum(version: bytes, private_key: bytes, checksum: bytes) -> bool:
@@ -149,8 +148,10 @@ class PublicKey:
             self.__wif_private_key = self.__to_wif(uncompressed=self.__uncompressed)
         return self.__wif_private_key
 
-    def __repr__(self):
-        return f"PublicKey({self.private_key[:4]}..., uncompressed={self.__uncompressed})"
+    def __repr__(self) -> str:
+        cls_name = self.__class__.__name__
+        key = self.private_key
+        return f"{cls_name}({key[:4]}...{key[-4:]}, uncompressed={self.__uncompressed})"
 
     def __reciprocal(self, n: int) -> int:
         return pow(n, -1, secp256k1.p_curve)
@@ -169,7 +170,7 @@ class PublicKey:
 
     def __ec_mul(self, scalar: int) -> Point:
         scalarbin = bin(scalar)[2:]
-        q = secp256k1.gen_point
+        q: Point = secp256k1.gen_point
         for i in range(1, len(scalarbin)):
             q = self.__ec_add(self.__ec_dup(q)) if scalarbin[i] == "1" else self.__ec_dup(q)
         return Point(q.x, q.y)
@@ -204,10 +205,14 @@ class PublicKey:
     def valid_point(p: Point | tuple[int, int]) -> bool:
         '''Checks if a given point belongs to secp256k1 elliptic curve'''
         try:
-            return (pow(p[1], 2) % secp256k1.p_curve ==
-                    (pow(p[0], 3) + p[0] * secp256k1.a_curve + secp256k1.b_curve) % secp256k1.p_curve)
-        except TypeError:  # Exception is raised when given arguments are invalid (non-integers)
+            return (all(isinstance(i, int) for i in p) and
+                    pow(p[1], 2) % secp256k1.p_curve == (pow(p[0], 3) + secp256k1.b_curve) % secp256k1.p_curve)
+        except (TypeError, IndexError):  # Exception is raised when given arguments are invalid (non-integers)
             return False  # which also means point is not on curve
+
+
+class Address(PublicKey):
+    pass
 
 
 if __name__ == '__main__':
@@ -215,7 +220,8 @@ if __name__ == '__main__':
     #       29045073188889159330506972844502087256824914692696728592611344825524969277689))
     # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
     #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
-    my_key = PublicKey(0xFF)
+    # my_key = PublicKey(0xFF)
+    '''
     print(my_key.private_key)
     print(my_key.wif_private_key)
     print(my_key.public_key)
@@ -264,3 +270,18 @@ if __name__ == '__main__':
     print(PrivateKey().to_wif(0xff))
     print(my_key.valid_point(c))
     print(pow(0xFF, 1))
+    print(PublicKey(0xFF))
+    print(PrivateKey(0xFF))
+    print(Address(0xFF))
+    a = Address(0xFF)
+    print(a.private_key)'''
+    c = Point(x=12312385769684547396095365029355369071957339694349689622296638024179682296192,
+              y=29045073188889159330506972844502087256824914692696728592611344825524969277689)
+    print(PublicKey.valid_point((0x1b38903a43f7f114ed4500b4eac7083fdefece1cf29c63528d563446f972c180,
+          0x4036edc931a60ae889353f77fd53de4a2708b26b6f5da72ad3394119daf408f9)))
+    print(hex(c.x), hex(c.y))
+
+    def num():
+        return 42
+    print(PrivateKey.valid_key(True))
+    a = PublicKey(0xFF)
