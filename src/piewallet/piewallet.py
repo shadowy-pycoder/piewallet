@@ -1,4 +1,5 @@
 from secrets import randbelow
+from time import perf_counter
 
 import base58
 import bech32  # type: ignore
@@ -85,7 +86,8 @@ class PrivateKey:
         '''Converts private key from integer to WIF format'''
         if not PrivateKey.valid_key(key):
             raise PrivateKeyError('Invalid scalar/private key')
-        privkey = bytes.fromhex(f"80{key:0>64x}" if uncompressed else f"80{key:0>64x}01")
+        privkey = (b'\x80' + key.to_bytes(32, 'big') if uncompressed
+                   else b'\x80' + key.to_bytes(32, 'big') + b'\x01')
         return base58.b58encode_check(privkey).decode("UTF-8")
 
 
@@ -180,10 +182,10 @@ class PublicKey:
         if not self.valid_point(raw_pubkey):
             raise PointError('Point is not on curve')
         if uncompressed:
-            return bytes.fromhex(f"04{raw_pubkey.x:0>64x}{raw_pubkey.y:0>64x}")
+            return b'\x04' + raw_pubkey.x.to_bytes(32, 'big') + raw_pubkey.y.to_bytes(32, 'big')
         odd = raw_pubkey.y & 1
-        return (bytes.fromhex(f"03{raw_pubkey.x:0>64x}") if odd
-                else bytes.fromhex(f"02{raw_pubkey.x:0>64x}"))
+        return (b'\x03' + raw_pubkey.x.to_bytes(32, 'big') if odd
+                else b'\x02' + raw_pubkey.x.to_bytes(32, 'big'))
 
     def __create_address(self, key: bytes) -> str:
         address = b'\x00' + ripemd160_sha256(key)
@@ -197,8 +199,8 @@ class PublicKey:
         return bech32.encode('bc', 0x00, ripemd160_sha256(key))
 
     def __to_wif(self, *, uncompressed: bool = False) -> str:
-        privkey = bytes.fromhex(
-            f"80{self.private_key[2:]:0>64}" if uncompressed else f"80{self.private_key[2:]:0>64}01")
+        privkey = (b'\x80' + self.__private_key.to_bytes(32, 'big') if uncompressed
+                   else b'\x80' + self.__private_key.to_bytes(32, 'big') + b'\x01')
         return base58.b58encode_check(privkey).decode("UTF-8")
 
     @staticmethod
@@ -220,8 +222,7 @@ if __name__ == '__main__':
     #       29045073188889159330506972844502087256824914692696728592611344825524969277689))
     # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
     #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
-    # my_key = PublicKey(0xFF)
-    '''
+    my_key = PublicKey(0xFF)
     print(my_key.private_key)
     print(my_key.wif_private_key)
     print(my_key.public_key)
@@ -274,7 +275,6 @@ if __name__ == '__main__':
     print(PrivateKey(0xFF))
     print(Address(0xFF))
     a = Address(0xFF)
-    print(a.private_key)'''
     c = Point(x=12312385769684547396095365029355369071957339694349689622296638024179682296192,
               y=29045073188889159330506972844502087256824914692696728592611344825524969277689)
     print(PublicKey.valid_point(c))
@@ -284,3 +284,12 @@ if __name__ == '__main__':
         return 42
     print(PrivateKey.valid_key(True))
     a = PublicKey(0xFF)
+    print(PublicKey.valid_point(c))
+    # b = PrivateKey('122455')
+    t0 = perf_counter()
+    for _ in range(1):
+        PublicKey().native_segwit_address
+    print(perf_counter() - t0)
+    a = PublicKey(0xFF, uncompressed=True)
+    print(a.public_key)
+    print(PrivateKey(0xFF).wif_private_key)
