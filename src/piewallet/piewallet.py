@@ -22,7 +22,7 @@ class PointError(PieWalletException):
 
 class PrivateKey:
 
-    def __init__(self, private_key: int | None = None) -> None:
+    def __init__(self, private_key: int | None = None, /) -> None:
         if private_key is None:
             private_key = randbelow(secp256k1.n_curve)
         if not self.valid_key(private_key):
@@ -43,7 +43,7 @@ class PrivateKey:
         return self.__wif_private_key
 
     @staticmethod
-    def valid_key(key: int) -> bool:
+    def valid_key(key: int, /) -> bool:
         '''Checks if an integer is within allowed range'''
         return isinstance(key, int) and not (key <= 0 or key >= secp256k1.n_curve)
 
@@ -57,7 +57,7 @@ class PrivateKey:
         return double_sha256(version + private_key)[:4] == checksum
 
     @staticmethod
-    def to_bytes(wif: str) -> tuple[bytes, bytes, bytes]:
+    def to_bytes(wif: str, /) -> tuple[bytes, bytes, bytes]:
         '''Converts WIF private key to bytes'''
         if not isinstance(wif, str):
             raise PrivateKeyError('must be in WIF format')
@@ -65,7 +65,7 @@ class PrivateKey:
         return private_key[:1], private_key[1:-4], private_key[-4:]
 
     @staticmethod
-    def to_int(wif: str, *, hexlify: bool = False) -> int | str:
+    def to_int(wif: str, /, *, hexlify: bool = False) -> int | str:
         '''Converts WIF private key to integer'''
         if not isinstance(wif, str):
             raise PrivateKeyError('must be in WIF format')
@@ -81,7 +81,7 @@ class PrivateKey:
         return -1
 
     @staticmethod
-    def to_wif(key: int, *, uncompressed: bool = False):
+    def to_wif(key: int, /, *, uncompressed: bool = False):
         '''Converts private key from integer to WIF format'''
         if not PrivateKey.valid_key(key):
             raise PrivateKeyError('Invalid scalar/private key')
@@ -91,7 +91,7 @@ class PrivateKey:
 
 class PublicKey:
 
-    def __init__(self, private_key: int | None = None, *, uncompressed: bool = False) -> None:
+    def __init__(self, private_key: int | None = None, /, *, uncompressed: bool = False) -> None:
         self.__private_key: int = PrivateKey(private_key).generate
         self.__wif_private_key: str | None = None
         self.__public_key: bytes | None = None
@@ -202,7 +202,7 @@ class PublicKey:
         return base58.b58encode_check(privkey).decode("UTF-8")
 
     @staticmethod
-    def valid_point(p: Point | tuple[int, int]) -> bool:
+    def valid_point(p: Point | tuple[int, int], /) -> bool:
         '''Checks if a given point belongs to secp256k1 elliptic curve'''
         try:
             return (all(isinstance(i, int) for i in p) and
@@ -277,8 +277,7 @@ if __name__ == '__main__':
     print(a.private_key)'''
     c = Point(x=12312385769684547396095365029355369071957339694349689622296638024179682296192,
               y=29045073188889159330506972844502087256824914692696728592611344825524969277689)
-    print(PublicKey.valid_point((0x1b38903a43f7f114ed4500b4eac7083fdefece1cf29c63528d563446f972c180,
-          0x4036edc931a60ae889353f77fd53de4a2708b26b6f5da72ad3394119daf408f9)))
+    print(PublicKey.valid_point(c))
     print(hex(c.x), hex(c.y))
 
     def num():
