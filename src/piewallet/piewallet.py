@@ -177,12 +177,12 @@ class PublicKey:
         return Point(x, y)
 
     def __ec_mul(self, scalar: int) -> Point:
+        scalarbin = bin(scalar)[2:]
         q: Point = secp256k1.gen_point
-        while scalar > 0:
+        for i in range(1, len(scalarbin)):
             q = self.__ec_dup(q)
-            if scalar & 1 == 1:
+            if scalarbin[i] == '1':
                 q = self.__ec_add(q)
-            scalar >>= 1
         return Point(q.x, q.y)
 
     def __create_pubkey(self, *, uncompressed: bool = False) -> bytes:
@@ -212,7 +212,7 @@ class PublicKey:
         privkey = b'\x80' + self.__private_key.to_bytes(32, 'big') + suffix
         return base58.b58encode_check(privkey).decode('UTF-8')
 
-    @ staticmethod
+    @staticmethod
     def valid_point(p: Point | tuple[int, int], /) -> bool:
         '''Checks if a given point belongs to secp256k1 elliptic curve'''
         try:
@@ -231,11 +231,13 @@ if __name__ == '__main__':
     #       29045073188889159330506972844502087256824914692696728592611344825524969277689))
     # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
     #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
-    my_key = PublicKey(0xFF, uncompressed=True)
-    print(my_key.private_key)
+    my_key = PublicKey(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364140, uncompressed=False)
+    # assert my_key.public_key == '031B38903A43F7F114ED4500B4EAC7083FDEFECE1CF29C63528D563446F972C180'.lower()
+    # assert my_key.public_key == '041B38903A43F7F114ED4500B4EAC7083FDEFECE1CF29C63528D563446F972C1804036EDC931A60AE889353F77FD53DE4A2708B26B6F5DA72AD3394119DAF408F9'.lower()
+    print(my_key.public_key)
     print(my_key.wif_private_key)
     print(PrivateKey.to_wif(0xFF, uncompressed=True))
-    print(my_key.public_key)
+
     print(my_key.native_segwit_address)
     print(my_key.nested_segwit_address)
     print(my_key.address)
