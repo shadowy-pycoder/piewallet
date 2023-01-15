@@ -26,8 +26,10 @@ class PrivateKey:
     def __init__(self, private_key: int | None = None, /) -> None:
         if private_key is None:
             private_key = randbelow(secp256k1.n_curve)
+
         if not self.valid_key(private_key):
             raise PrivateKeyError('Invalid scalar/private key')
+
         self.__generate = private_key
         self.__wif_private_key: str | None = None
 
@@ -51,7 +53,7 @@ class PrivateKey:
     def __repr__(self) -> str:
         cls_name = self.__class__.__name__
         key = f'0x{self.generate:0>64x}'
-        return f"{cls_name}({key[:4]}...{key[-4:]})"
+        return f'{cls_name}({key[:4]}...{key[-4:]})'
 
     @staticmethod
     def valid_checksum(version: bytes, private_key: bytes, checksum: bytes) -> bool:
@@ -62,6 +64,7 @@ class PrivateKey:
         '''Converts WIF private key to bytes'''
         if not isinstance(wif, str):
             raise PrivateKeyError('must be in WIF format')
+
         private_key = base58.b58decode(wif)
         return private_key[:1], private_key[1:-4], private_key[-4:]
 
@@ -70,9 +73,11 @@ class PrivateKey:
         '''Converts WIF private key to integer'''
         if not isinstance(wif, str):
             raise PrivateKeyError('must be in WIF format')
+
         version, private_key, checksum = PrivateKey.to_bytes(wif)
         if not PrivateKey.valid_checksum(version, private_key, checksum):
             raise PrivateKeyError('invalid WIF checksum')
+
         private_key_int = int.from_bytes(
             private_key[:-1], 'big') if len(private_key) == 33 else int.from_bytes(private_key, 'big')
         if PrivateKey.valid_key(private_key_int):
@@ -86,9 +91,10 @@ class PrivateKey:
         '''Converts private key from integer to WIF format'''
         if not PrivateKey.valid_key(key):
             raise PrivateKeyError('Invalid scalar/private key')
-        privkey = (b'\x80' + key.to_bytes(32, 'big') if uncompressed
-                   else b'\x80' + key.to_bytes(32, 'big') + b'\x01')
-        return base58.b58encode_check(privkey).decode("UTF-8")
+
+        suffix = b'' if uncompressed else b'\x01'
+        privkey = b'\x80' + key.to_bytes(32, 'big') + suffix
+        return base58.b58encode_check(privkey).decode('UTF-8')
 
 
 class PublicKey:
@@ -153,57 +159,60 @@ class PublicKey:
     def __repr__(self) -> str:
         cls_name = self.__class__.__name__
         key = self.private_key
-        return f"{cls_name}({key[:4]}...{key[-4:]}, uncompressed={self.__uncompressed})"
+        return f'{cls_name}({key[:4]}...{key[-4:]}, uncompressed={self.__uncompressed})'
 
     def __reciprocal(self, n: int) -> int:
         return pow(n, -1, secp256k1.p_curve)
 
     def __ec_add(self, p: Point) -> Point:
         slope = (p.y - secp256k1.gen_point.y) * self.__reciprocal(p.x - secp256k1.gen_point.x)
-        x = pow(slope, 2) - p.x - secp256k1.gen_point.x
-        y = slope * (p.x - x) - p.y
-        return Point(x % secp256k1.p_curve, y % secp256k1.p_curve)
+        x = (pow(slope, 2) - p.x - secp256k1.gen_point.x) % secp256k1.p_curve
+        y = (slope * (p.x - x) - p.y) % secp256k1.p_curve
+        return Point(x, y)
 
     def __ec_dup(self, p: Point) -> Point:
         slope = (3 * pow(p.x, 2) + secp256k1.a_curve) * self.__reciprocal(2 * p.y)
-        x = pow(slope, 2) - 2 * p.x
-        y = slope * (p.x - x) - p.y
-        return Point(x % secp256k1.p_curve, y % secp256k1.p_curve)
+        x = (pow(slope, 2) - 2 * p.x) % secp256k1.p_curve
+        y = (slope * (p.x - x) - p.y) % secp256k1.p_curve
+        return Point(x, y)
 
     def __ec_mul(self, scalar: int) -> Point:
-        scalarbin = bin(scalar)[2:]
         q: Point = secp256k1.gen_point
-        for i in range(1, len(scalarbin)):
-            q = self.__ec_add(self.__ec_dup(q)) if scalarbin[i] == "1" else self.__ec_dup(q)
+        while scalar > 0:
+            q = self.__ec_dup(q)
+            if scalar & 1 == 1:
+                q = self.__ec_add(q)
+            scalar >>= 1
         return Point(q.x, q.y)
 
     def __create_pubkey(self, *, uncompressed: bool = False) -> bytes:
         raw_pubkey = self.__ec_mul(self.__private_key)
         if not self.valid_point(raw_pubkey):
             raise PointError('Point is not on curve')
+
         if uncompressed:
             return b'\x04' + raw_pubkey.x.to_bytes(32, 'big') + raw_pubkey.y.to_bytes(32, 'big')
-        odd = raw_pubkey.y & 1
-        return (b'\x03' + raw_pubkey.x.to_bytes(32, 'big') if odd
-                else b'\x02' + raw_pubkey.x.to_bytes(32, 'big'))
+
+        prefix = b'\x03' if raw_pubkey.y & 1 else b'\x02'
+        return prefix + raw_pubkey.x.to_bytes(32, 'big')
 
     def __create_address(self, key: bytes) -> str:
         address = b'\x00' + ripemd160_sha256(key)
-        return base58.b58encode_check(address).decode("UTF-8")
+        return base58.b58encode_check(address).decode('UTF-8')
 
     def __create_nested_segwit(self, key: bytes) -> str:
         address = b'\x05' + ripemd160_sha256(b'\x00\x14' + ripemd160_sha256(key))
-        return base58.b58encode_check(address).decode("UTF-8")
+        return base58.b58encode_check(address).decode('UTF-8')
 
     def __create_native_segwit(self, key: bytes) -> str:
         return bech32.encode('bc', 0x00, ripemd160_sha256(key))
 
     def __to_wif(self, *, uncompressed: bool = False) -> str:
-        privkey = (b'\x80' + self.__private_key.to_bytes(32, 'big') if uncompressed
-                   else b'\x80' + self.__private_key.to_bytes(32, 'big') + b'\x01')
-        return base58.b58encode_check(privkey).decode("UTF-8")
+        suffix = b'' if uncompressed else b'\x01'
+        privkey = b'\x80' + self.__private_key.to_bytes(32, 'big') + suffix
+        return base58.b58encode_check(privkey).decode('UTF-8')
 
-    @staticmethod
+    @ staticmethod
     def valid_point(p: Point | tuple[int, int], /) -> bool:
         '''Checks if a given point belongs to secp256k1 elliptic curve'''
         try:
@@ -222,74 +231,34 @@ if __name__ == '__main__':
     #       29045073188889159330506972844502087256824914692696728592611344825524969277689))
     # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
     #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
-    my_key = PublicKey(0xFF)
+    my_key = PublicKey(0xFF, uncompressed=True)
     print(my_key.private_key)
     print(my_key.wif_private_key)
+    print(PrivateKey.to_wif(0xFF, uncompressed=True))
     print(my_key.public_key)
     print(my_key.native_segwit_address)
+    print(my_key.nested_segwit_address)
     print(my_key.address)
-    my_privkey = PrivateKey()
-    # wif_key = my_privkey.to_wif()
-    # print(my_privkey.to_wif())
-    # print(my_privkey.to_bytes(wif_key))
+    my_privkey = PrivateKey(0xFF)
+    print(my_privkey.generate)
+    print(my_privkey.wif_private_key)
+    print(PrivateKey.valid_key(0xC0FEE))
     b = (12312385769684547396095365029355369071957339694349689622296638024179682296192,
          29045073188889159330506972844502087256824914692696728592611344825524969277689)
     print(my_key.valid_point(b))
     c = Point(x=12312385769684547396095365029355369071957339694349689622296638024179682296192,
               y=29045073188889159330506972844502087256824914692696728592611344825524969277689)
     print(my_key.valid_point((c.x, c.y)))
-    print(my_key.address)
-    print(my_key.address)
-    # my_key.address = 'B'
-    # print(my_key.__private_key) #error
-    print(my_key.nested_segwit_address)
-    my_key._PublicKey__uncompressed = False
-    my_key2 = PublicKey(0xAA)
-    print(PublicKey.address.__doc__)
-    print(my_key2.address)
-    print(my_key.address)
-    print(*[i for i in dir(my_key) if not i.startswith('_')], sep='\n')
-    print(getattr(my_key, 'address', []))
-    print(hasattr(my_key, 'generate'))
-    try:
-        setattr(my_key, 'private_key', 'hack_bitcoin')
-    except AttributeError:
-        print('Sorry, can\'t hack bitcoin')
-    print(vars(my_key))
-    print(vars())
-    print([(key, value) for key, value in my_key.__dict__.items()])
-    print(vars(my_privkey))
-    my_key3 = PrivateKey(0xAA)
-    my_key3.__generate = 2
-    my_key.__address = 1
-    print(my_key.address)
-    print(vars(my_key3))
-    my_key4 = PrivateKey()
-    print(my_key4.wif_private_key)
-    print(my_key4)
-    print(my_key)
-    print(PrivateKey().to_wif(0xff))
-    print(my_key.valid_point(c))
-    print(pow(0xFF, 1))
-    print(PublicKey(0xFF))
-    print(PrivateKey(0xFF))
-    print(Address(0xFF))
-    a = Address(0xFF)
-    c = Point(x=12312385769684547396095365029355369071957339694349689622296638024179682296192,
-              y=29045073188889159330506972844502087256824914692696728592611344825524969277689)
-    print(PublicKey.valid_point(c))
-    print(hex(c.x), hex(c.y))
-
-    def num():
-        return 42
-    print(PrivateKey.valid_key(True))
-    a = PublicKey(0xFF)
-    print(PublicKey.valid_point(c))
-    # b = PrivateKey('122455')
-    t0 = perf_counter()
-    for _ in range(1):
-        PublicKey().native_segwit_address
-    print(perf_counter() - t0)
-    a = PublicKey(0xFF, uncompressed=True)
-    print(a.public_key)
-    print(PrivateKey(0xFF).wif_private_key)
+    # print(getattr(my_key, 'address', []))
+    # print(hasattr(my_key, 'generate'))
+    # try:
+    #     setattr(my_key, 'private_key', 'hack_bitcoin')
+    # except AttributeError:
+    #     print('Sorry, can\'t hack bitcoin')
+    # print(vars(my_key))
+    # print(vars())
+    # print([(key, value) for key, value in my_key.__dict__.items()])
+    # t0 = perf_counter()
+    # for i in range(1000):
+    #     PublicKey().address
+    # print(perf_counter() - t0)
