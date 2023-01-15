@@ -17,6 +17,12 @@ class Point(NamedTuple):
     y: int
 
 
+class JacobianPoint(NamedTuple):
+    x: int
+    y: int
+    z: int
+
+
 class EllipticCurve(NamedTuple):
     '''
     Elliptic curve with all the parameters to define it.
@@ -25,8 +31,10 @@ class EllipticCurve(NamedTuple):
     n_curve: int
     a_curve: int
     b_curve: int
-    gen_point: Point
+    gen_point: JacobianPoint
 
 
 secp256k1 = EllipticCurve(p_curve=P_CURVE, n_curve=N_CURVE,
-                          a_curve=A_CURVE, b_curve=B_CURVE, gen_point=Point(x=GEN_POINT[0], y=GEN_POINT[1]))
+                          a_curve=A_CURVE, b_curve=B_CURVE, gen_point=JacobianPoint(x=GEN_POINT[0], y=GEN_POINT[1], z=1))
+
+IDENTITY_POINT = JacobianPoint(x=P_CURVE, y=0, z=1)
