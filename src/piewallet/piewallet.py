@@ -164,14 +164,14 @@ class PublicKey:
     def __reciprocal(self, n: int) -> int:
         return pow(n, -1, secp256k1.p_curve)
 
-    def __ec_add(self, p: Point) -> Point:
-        slope = (p.y - secp256k1.gen_point.y) * self.__reciprocal(p.x - secp256k1.gen_point.x)
-        x = (pow(slope, 2) - p.x - secp256k1.gen_point.x) % secp256k1.p_curve
+    def __ec_add(self, p: Point, q: Point) -> Point:
+        slope = (p.y - q.y) * self.__reciprocal(p.x - q.x)
+        x = (pow(slope, 2) - p.x - q.x) % secp256k1.p_curve
         y = (slope * (p.x - x) - p.y) % secp256k1.p_curve
         return Point(x, y)
 
     def __ec_dup(self, p: Point) -> Point:
-        slope = (3 * pow(p.x, 2) + secp256k1.a_curve) * self.__reciprocal(2 * p.y)
+        slope = (3 * pow(p.x, 2)) * self.__reciprocal(2 * p.y)
         x = (pow(slope, 2) - 2 * p.x) % secp256k1.p_curve
         y = (slope * (p.x - x) - p.y) % secp256k1.p_curve
         return Point(x, y)
@@ -182,7 +182,7 @@ class PublicKey:
         for i in range(1, len(scalarbin)):
             q = self.__ec_dup(q)
             if scalarbin[i] == '1':
-                q = self.__ec_add(q)
+                q = self.__ec_add(q, secp256k1.gen_point)
         return Point(q.x, q.y)
 
     def __create_pubkey(self, *, uncompressed: bool = False) -> bytes:
@@ -231,7 +231,7 @@ if __name__ == '__main__':
     #       29045073188889159330506972844502087256824914692696728592611344825524969277689))
     # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
     #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
-    my_key = PublicKey(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364140, uncompressed=False)
+    my_key = PublicKey(0xFF, uncompressed=False)
     # assert my_key.public_key == '031B38903A43F7F114ED4500B4EAC7083FDEFECE1CF29C63528D563446F972C180'.lower()
     # assert my_key.public_key == '041B38903A43F7F114ED4500B4EAC7083FDEFECE1CF29C63528D563446F972C1804036EDC931A60AE889353F77FD53DE4A2708B26B6F5DA72AD3394119DAF408F9'.lower()
     print(my_key.public_key)
