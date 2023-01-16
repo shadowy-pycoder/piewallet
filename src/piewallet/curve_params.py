@@ -38,3 +38,4 @@ secp256k1 = EllipticCurve(p_curve=P_CURVE, n_curve=N_CURVE,
                           a_curve=A_CURVE, b_curve=B_CURVE, gen_point=JacobianPoint(x=GEN_POINT[0], y=GEN_POINT[1], z=1))
 
 IDENTITY_POINT = JacobianPoint(x=P_CURVE, y=0, z=1)
+POW_2_256_M1 = 2 ** 256 - 1

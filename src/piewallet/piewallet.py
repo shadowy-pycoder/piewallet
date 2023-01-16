@@ -4,7 +4,7 @@ from time import perf_counter
 import base58
 import bech32  # type: ignore
 
-from curve_params import secp256k1, JacobianPoint, Point, IDENTITY_POINT
+from curve_params import secp256k1, JacobianPoint, Point, IDENTITY_POINT, POW_2_256_M1
 from functions.double_sha256 import double_sha256
 from functions.ripemd160_sha256 import ripemd160_sha256
 
@@ -99,6 +99,8 @@ class PrivateKey:
 
 class PublicKey:
 
+    precomputes: list[JacobianPoint] = []
+
     def __init__(self, private_key: int | None = None, /, *, uncompressed: bool = False) -> None:
         self.__private_key: int = PrivateKey(private_key).generate
         self.__wif_private_key: str | None = None
@@ -107,6 +109,8 @@ class PublicKey:
         self.__nested_segwit_address: str | None = None
         self.__native_segwit_address: str | None = None
         self.__uncompressed: bool = uncompressed
+        if not PublicKey.precomputes:
+            self.__get_precomputes()
 
     @property
     def address(self) -> str:
@@ -161,27 +165,6 @@ class PublicKey:
         key = self.private_key
         return f'{cls_name}({key[:4]}...{key[-4:]}, uncompressed={self.__uncompressed})'
 
-    # def __ec_add(self, p: Point, q: Point) -> Point:
-    #     slope = (p.y - q.y) * self.__reciprocal(p.x - q.x)
-    #     x = (pow(slope, 2) - p.x - q.x) % secp256k1.p_curve
-    #     y = (slope * (p.x - x) - p.y) % secp256k1.p_curve
-    #     return Point(x, y)
-
-    # def __ec_dup(self, p: Point) -> Point:
-    #     slope = (3 * pow(p.x, 2)) * self.__reciprocal(2 * p.y)
-    #     x = (pow(slope, 2) - 2 * p.x) % secp256k1.p_curve
-    #     y = (slope * (p.x - x) - p.y) % secp256k1.p_curve
-    #     return Point(x, y)
-
-    # def __ec_mul(self, scalar: int) -> Point:
-    #     scalarbin = bin(scalar)[2:]
-    #     q: Point = secp256k1.gen_point
-    #     for i in range(1, len(scalarbin)):
-    #         q = self.__ec_dup(q)
-    #         if scalarbin[i] == '1':
-    #             q = self.__ec_add(q, secp256k1.gen_point)
-    #     return Point(q.x, q.y)
-
     def __ec_dup(self, q: JacobianPoint) -> JacobianPoint:
         # Fast Prime Field Elliptic Curve Cryptography with 256 Bit Primes
         # https://eprint.iacr.org/2013/816.pdf page 4
@@ -198,9 +181,9 @@ class PublicKey:
     def __ec_add(self, p: JacobianPoint, q: JacobianPoint) -> JacobianPoint:
         # Fast Prime Field Elliptic Curve Cryptography with 256 Bit Primes
         # https://eprint.iacr.org/2013/816.pdf page 4
-        if (p.x == secp256k1.p_curve):
+        if p.x == secp256k1.p_curve:
             return q
-        if (q.x == secp256k1.p_curve):
+        if q.x == secp256k1.p_curve:
             return p
 
         PZ2 = p.z * p.z
@@ -210,8 +193,8 @@ class PublicKey:
         S1 = (p.y * QZ2 * q.z) % secp256k1.p_curve
         S2 = (q.y * PZ2 * p.z) % secp256k1.p_curve
 
-        if (U1 == U2):
-            if (S1 == S2):  # double point
+        if U1 == U2:
+            if S1 == S2:  # double point
                 return self.__ec_dup(p)
             else:  # return POINT_AT_INFINITY
                 return IDENTITY_POINT
@@ -225,17 +208,31 @@ class PublicKey:
         z = (H * p.z * q.z) % secp256k1.p_curve
         return JacobianPoint(x, y, z)
 
-    def __ec_mul(self, q: JacobianPoint, scalar: int) -> JacobianPoint:
+    def __get_precomputes(self) -> None:
+        dbl = secp256k1.gen_point
+        for _ in range(256):
+            PublicKey.precomputes.append(dbl)
+            dbl = self.__ec_dup(dbl)
+
+    def __ec_mul(self, scalar: int) -> JacobianPoint:
+        # https://paulmillr.com/posts/noble-secp256k1-fast-ecc/#fighting-timing-attacks
+        n = scalar % secp256k1.p_curve
         p = IDENTITY_POINT
-        while scalar > 0:
-            if scalar & 1:
+        fake_p = IDENTITY_POINT
+        fake_n = POW_2_256_M1 ^ n
+
+        for i in range(256):
+            q = PublicKey.precomputes[i]
+            if n & 1:
                 p = self.__ec_add(p, q)
-            scalar >>= 1
-            q = self.__ec_dup(q)
+            else:
+                fake_p = self.__ec_add(fake_p, q)
+            n >>= 1
+            fake_n >>= 1
         return JacobianPoint(p.x, p.y, p.z)
 
     def __create_pubkey(self, *, uncompressed: bool = False) -> bytes:
-        raw_pubkey: Point = self.to_affine(self.__ec_mul(secp256k1.gen_point, self.__private_key))
+        raw_pubkey: Point = self.to_affine(self.__ec_mul(self.__private_key))
         if not self.valid_point(raw_pubkey):
             raise PointError('Point is not on curve')
 
@@ -266,15 +263,12 @@ class PublicKey:
         return pow(n, -1, secp256k1.p_curve)
 
     @staticmethod
-    def to_affine(p: JacobianPoint, inv_z: int = None) -> Point:
-        '''
-        Converts jacobian point to affine point
-        '''
-        if inv_z is None:
-            inv_z = PublicKey.modulo_inverse(p.z)
+    def to_affine(p: JacobianPoint) -> Point:
+        '''Converts jacobian point to affine point'''
+        inv_z = PublicKey.modulo_inverse(p.z)
         inv_z2 = inv_z ** 2
-        x = p.x * inv_z2 % secp256k1.p_curve
-        y = p.y * inv_z2 * inv_z % secp256k1.p_curve
+        x = (p.x * inv_z2) % secp256k1.p_curve
+        y = (p.y * inv_z2 * inv_z) % secp256k1.p_curve
         return Point(x, y)
 
     @staticmethod
@@ -296,7 +290,7 @@ if __name__ == '__main__':
     #       29045073188889159330506972844502087256824914692696728592611344825524969277689))
     # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
     #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
-    my_key = PublicKey(0xFF, uncompressed=False)
+    my_key = PublicKey(0xFFAAAAADDDDD, uncompressed=False)
     # assert my_key.public_key == '031B38903A43F7F114ED4500B4EAC7083FDEFECE1CF29C63528D563446F972C180'.lower()
     # assert my_key.public_key == '041B38903A43F7F114ED4500B4EAC7083FDEFECE1CF29C63528D563446F972C1804036EDC931A60AE889353F77FD53DE4A2708B26B6F5DA72AD3394119DAF408F9'.lower()
     print(my_key.public_key)
@@ -327,5 +321,5 @@ if __name__ == '__main__':
     # print([(key, value) for key, value in my_key.__dict__.items()])
     t0 = perf_counter()
     for i in range(1000):
-        PublicKey().address
+        PublicKey().public_key
     print(perf_counter() - t0)
