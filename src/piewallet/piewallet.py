@@ -45,15 +45,15 @@ class PrivateKey:
             self.__wif_private_key = self.to_wif(self.generate)
         return self.__wif_private_key
 
-    @staticmethod
-    def valid_key(scalar: int, /) -> bool:
-        '''Checks if an integer is within allowed range'''
-        return isinstance(scalar, int) and not (scalar <= 0 or scalar >= secp256k1.n_curve)
-
     def __repr__(self) -> str:
         cls_name = self.__class__.__name__
         key = f'0x{self.generate:0>64x}'
         return f'{cls_name}({key[:4]}...{key[-4:]})'
+
+    @staticmethod
+    def valid_key(scalar: int, /) -> bool:
+        '''Checks if an integer is within allowed range'''
+        return isinstance(scalar, int) and not (scalar <= 0 or scalar >= secp256k1.n_curve)
 
     @staticmethod
     def valid_checksum(version: bytes, private_key: bytes, checksum: bytes) -> bool:
@@ -167,6 +167,7 @@ class PublicKey:
 
     def __ec_dbl(self, q: JacobianPoint) -> JacobianPoint:
         # Fast Prime Field Elliptic Curve Cryptography with 256 Bit Primes
+        # Shay Gueron, Vlad Krasnov
         # https://eprint.iacr.org/2013/816.pdf page 4
         if q.x == secp256k1.p_curve:
             return q
@@ -180,6 +181,7 @@ class PublicKey:
 
     def __ec_add(self, p: JacobianPoint, q: JacobianPoint) -> JacobianPoint:
         # Fast Prime Field Elliptic Curve Cryptography with 256 Bit Primes
+        # Shay Gueron, Vlad Krasnov
         # https://eprint.iacr.org/2013/816.pdf page 4
         if p.x == secp256k1.p_curve:
             return q
@@ -221,8 +223,8 @@ class PublicKey:
         fake_p = IDENTITY_POINT
         fake_n = POW_2_256_M1 ^ n
 
-        for i in range(256):
-            q = PublicKey.precomputes[i]
+        for point in PublicKey.precomputes:
+            q = point
             if n & 1:
                 p = self.__ec_add(p, q)
             else:
@@ -242,16 +244,16 @@ class PublicKey:
         prefix = b'\x03' if raw_pubkey.y & 1 else b'\x02'
         return prefix + raw_pubkey.x.to_bytes(32, 'big')
 
-    def __create_address(self, key: bytes) -> str:
-        address = b'\x00' + ripemd160_sha256(key)
+    def __create_address(self, pubkey: bytes) -> str:
+        address = b'\x00' + ripemd160_sha256(pubkey)
         return base58.b58encode_check(address).decode('UTF-8')
 
-    def __create_nested_segwit(self, key: bytes) -> str:
-        address = b'\x05' + ripemd160_sha256(b'\x00\x14' + ripemd160_sha256(key))
+    def __create_nested_segwit(self, pubkey: bytes) -> str:
+        address = b'\x05' + ripemd160_sha256(b'\x00\x14' + ripemd160_sha256(pubkey))
         return base58.b58encode_check(address).decode('UTF-8')
 
-    def __create_native_segwit(self, key: bytes) -> str:
-        return bech32.encode('bc', 0x00, ripemd160_sha256(key))
+    def __create_native_segwit(self, pubkey: bytes) -> str:
+        return bech32.encode('bc', 0x00, ripemd160_sha256(pubkey))
 
     def __to_wif(self, *, uncompressed: bool = False) -> str:
         suffix = b'' if uncompressed else b'\x01'
@@ -290,7 +292,7 @@ if __name__ == '__main__':
     #       29045073188889159330506972844502087256824914692696728592611344825524969277689))
     # print(__ec_mul(0xEE31862668ECD0EC1B3538B04FBF21A59965B51C5648F5CE97C613B48610FA7B) == (
     #     49414738088508426605940350615969154033259972709128027173379136589046972286596, 113066049041265251152881802696276066009952852537138792323892337668336798103501))
-    my_key = PublicKey(0xFFAAAAADDDDD, uncompressed=False)
+    my_key = PublicKey(0xFF, uncompressed=False)
     # assert my_key.public_key == '031B38903A43F7F114ED4500B4EAC7083FDEFECE1CF29C63528D563446F972C180'.lower()
     # assert my_key.public_key == '041B38903A43F7F114ED4500B4EAC7083FDEFECE1CF29C63528D563446F972C1804036EDC931A60AE889353F77FD53DE4A2708B26B6F5DA72AD3394119DAF408F9'.lower()
     print(my_key.public_key)
