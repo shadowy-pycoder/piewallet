@@ -46,9 +46,9 @@ class PrivateKey:
         return self.__wif_private_key
 
     @staticmethod
-    def valid_key(key: int, /) -> bool:
+    def valid_key(scalar: int, /) -> bool:
         '''Checks if an integer is within allowed range'''
-        return isinstance(key, int) and not (key <= 0 or key >= secp256k1.n_curve)
+        return isinstance(scalar, int) and not (scalar <= 0 or scalar >= secp256k1.n_curve)
 
     def __repr__(self) -> str:
         cls_name = self.__class__.__name__
@@ -74,16 +74,16 @@ class PrivateKey:
         if not isinstance(wif, str):
             raise PrivateKeyError('must be in WIF format')
 
-        version, private_key, checksum = PrivateKey.to_bytes(wif)
-        if not PrivateKey.valid_checksum(version, private_key, checksum):
+        version, privkey, checksum = PrivateKey.to_bytes(wif)
+        if not PrivateKey.valid_checksum(version, privkey, checksum):
             raise PrivateKeyError('invalid WIF checksum')
 
-        private_key_int = int.from_bytes(
-            private_key[:-1], 'big') if len(private_key) == 33 else int.from_bytes(private_key, 'big')
-        if PrivateKey.valid_key(private_key_int):
+        privkey_int = int.from_bytes(
+            privkey[:-1], 'big') if len(privkey) == 33 else int.from_bytes(privkey, 'big')
+        if PrivateKey.valid_key(privkey_int):
             if hexlify:
-                return f'0x{private_key_int:0>64x}'
-            return private_key_int
+                return f'0x{privkey_int:0>64x}'
+            return privkey_int
         return -1
 
     @staticmethod
@@ -165,7 +165,7 @@ class PublicKey:
         key = self.private_key
         return f'{cls_name}({key[:4]}...{key[-4:]}, uncompressed={self.__uncompressed})'
 
-    def __ec_dup(self, q: JacobianPoint) -> JacobianPoint:
+    def __ec_dbl(self, q: JacobianPoint) -> JacobianPoint:
         # Fast Prime Field Elliptic Curve Cryptography with 256 Bit Primes
         # https://eprint.iacr.org/2013/816.pdf page 4
         if q.x == secp256k1.p_curve:
@@ -195,7 +195,7 @@ class PublicKey:
 
         if U1 == U2:
             if S1 == S2:  # double point
-                return self.__ec_dup(p)
+                return self.__ec_dbl(p)
             else:  # return POINT_AT_INFINITY
                 return IDENTITY_POINT
 
@@ -209,10 +209,10 @@ class PublicKey:
         return JacobianPoint(x, y, z)
 
     def __get_precomputes(self) -> None:
-        dbl = secp256k1.gen_point
+        dbl: JacobianPoint = secp256k1.gen_point
         for _ in range(256):
             PublicKey.precomputes.append(dbl)
-            dbl = self.__ec_dup(dbl)
+            dbl = self.__ec_dbl(dbl)
 
     def __ec_mul(self, scalar: int) -> JacobianPoint:
         # https://paulmillr.com/posts/noble-secp256k1-fast-ecc/#fighting-timing-attacks
