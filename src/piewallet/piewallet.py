@@ -62,8 +62,8 @@ class PrivateKey:
         return isinstance(scalar, int) and not (scalar <= 0 or scalar >= secp256k1.n_curve)
 
     @staticmethod
-    def valid_checksum(version: bytes, private_key: bytes, checksum: bytes) -> bool:
-        return double_sha256(version + private_key)[:4] == checksum
+    def valid_checksum(version: bytes, privkey: bytes, checksum: bytes) -> bool:
+        return double_sha256(version + privkey)[:4] == checksum
 
     @staticmethod
     def to_bytes(wif: str, /) -> tuple[bytes, bytes, bytes]:
@@ -71,8 +71,8 @@ class PrivateKey:
         if not isinstance(wif, str):
             raise PrivateKeyError('must be in WIF format')
 
-        private_key = base58.b58decode(wif)
-        return private_key[:1], private_key[1:-4], private_key[-4:]
+        privkey = base58.b58decode(wif)
+        return privkey[:1], privkey[1:-4], privkey[-4:]
 
     @staticmethod
     def to_int(wif: str, /, *, hexlify: bool = False) -> int | str:
@@ -93,14 +93,14 @@ class PrivateKey:
         return -1
 
     @staticmethod
-    def to_wif(key: int, /, *, uncompressed: bool = False):
+    def to_wif(privkey: int, /, *, uncompressed: bool = False) -> str:
         '''Converts private key from integer to WIF format'''
-        if not PrivateKey.valid_key(key):
+        if not PrivateKey.valid_key(privkey):
             raise PrivateKeyError('Invalid scalar/private key')
 
         suffix = b'' if uncompressed else b'\x01'
-        privkey = b'\x80' + key.to_bytes(32, 'big') + suffix
-        return base58.b58encode_check(privkey).decode('UTF-8')
+        privkey_bytes = b'\x80' + privkey.to_bytes(32, 'big') + suffix
+        return base58.b58encode_check(privkey_bytes).decode('UTF-8')
 
 
 class PublicKey(PrivateKey):
@@ -283,7 +283,7 @@ if __name__ == '__main__':
     # assert my_key.public_key == '031B38903A43F7F114ED4500B4EAC7083FDEFECE1CF29C63528D563446F972C180'.lower()
     # assert my_key.public_key == '041B38903A43F7F114ED4500B4EAC7083FDEFECE1CF29C63528D563446F972C1804036EDC931A60AE889353F77FD53DE4A2708B26B6F5DA72AD3394119DAF408F9'.lower()
 
-    print(my_key.public_key)
+    print(my_key._PublicKey__precomputes[1])
     print(my_key.wif_private_key)
     print(PrivateKey.to_wif(0xFF, uncompressed=True))
 
