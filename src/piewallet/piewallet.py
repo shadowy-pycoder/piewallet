@@ -23,32 +23,38 @@ class PointError(PieWalletException):
 
 class PrivateKey:
 
-    def __init__(self, private_key: int | None = None, /) -> None:
+    def __init__(self, private_key: int | None = None, /, *, uncompressed: bool = False) -> None:
         if private_key is None:
             private_key = randbelow(secp256k1.n_curve)
 
         if not self.valid_key(private_key):
             raise PrivateKeyError('Invalid scalar/private key')
 
-        self.__generate = private_key
+        self.__private_key = private_key
         self.__wif_private_key: str | None = None
+        self.uncompressed = uncompressed
 
     @property
-    def generate(self):
+    def private_key(self):
         '''Returns private key (generated or user-supplied)'''
-        return self.__generate
+        return self.__private_key
+
+    @property
+    def hex_private_key(self) -> str:
+        '''Returns private key in HEX format'''
+        return f'0x{self.private_key:0>64x}'
 
     @property
     def wif_private_key(self) -> str:
         '''Returns private key in WIF format'''
         if self.__wif_private_key is None:
-            self.__wif_private_key = self.to_wif(self.generate)
+            self.__wif_private_key = self.to_wif(self.private_key, uncompressed=self.uncompressed)
         return self.__wif_private_key
 
     def __repr__(self) -> str:
         cls_name = self.__class__.__name__
-        key = f'0x{self.generate:0>64x}'
-        return f'{cls_name}({key[:4]}...{key[-4:]})'
+        key = self.hex_private_key
+        return f'{cls_name}({key[:4]}...{key[-4:]}, uncompressed={self.uncompressed})'
 
     @staticmethod
     def valid_key(scalar: int, /) -> bool:
@@ -97,26 +103,24 @@ class PrivateKey:
         return base58.b58encode_check(privkey).decode('UTF-8')
 
 
-class PublicKey:
+class PublicKey(PrivateKey):
 
-    precomputes: list[JacobianPoint] = []
+    __precomputes: list[JacobianPoint] = []
 
     def __init__(self, private_key: int | None = None, /, *, uncompressed: bool = False) -> None:
-        self.__private_key: int = PrivateKey(private_key).generate
-        self.__wif_private_key: str | None = None
+        super().__init__(private_key, uncompressed=uncompressed)
         self.__public_key: bytes | None = None
         self.__address: str | None = None
         self.__nested_segwit_address: str | None = None
         self.__native_segwit_address: str | None = None
-        self.__uncompressed: bool = uncompressed
-        if not PublicKey.precomputes:
+        if not PublicKey.__precomputes:
             self.__get_precomputes()
 
     @property
     def address(self) -> str:
         '''Returns Legacy bitcoin address (P2PKH)'''
         if self.__address is None:
-            self.__address = self.__create_address(bytes.fromhex(self.public_key))
+            self.__address = self.__create_address(self.public_key_bytes)
         return self.__address
 
     @property
@@ -126,8 +130,8 @@ class PublicKey:
 
         Returns None for uncompressed public keys
         '''
-        if not self.__uncompressed and self.__nested_segwit_address is None:
-            self.__nested_segwit_address = self.__create_nested_segwit(bytes.fromhex(self.public_key))
+        if not self.uncompressed and self.__nested_segwit_address is None:
+            self.__nested_segwit_address = self.__create_nested_segwit(self.public_key_bytes)
         return self.__nested_segwit_address
 
     @property
@@ -137,33 +141,21 @@ class PublicKey:
 
         Returns None for uncompressed public keys
         '''
-        if not self.__uncompressed and self.__native_segwit_address is None:
-            self.__native_segwit_address = self.__create_native_segwit(bytes.fromhex(self.public_key))
+        if not self.uncompressed and self.__native_segwit_address is None:
+            self.__native_segwit_address = self.__create_native_segwit(self.public_key_bytes)
         return self.__native_segwit_address
+
+    @property
+    def public_key_bytes(self) -> bytes:
+        '''Returns public key in bytes format'''
+        if self.__public_key is None:
+            self.__public_key = self.__create_pubkey(uncompressed=self.uncompressed)
+        return self.__public_key
 
     @property
     def public_key(self) -> str:
         '''Returns public key in HEX format'''
-        if self.__public_key is None:
-            self.__public_key = self.__create_pubkey(uncompressed=self.__uncompressed)
-        return f'{self.__public_key.hex()}'
-
-    @property
-    def private_key(self) -> str:
-        '''Returns private key in HEX format'''
-        return f'0x{self.__private_key:0>64x}'
-
-    @property
-    def wif_private_key(self) -> str:
-        '''Returns private key in WIF format'''
-        if self.__wif_private_key is None:
-            self.__wif_private_key = self.__to_wif(uncompressed=self.__uncompressed)
-        return self.__wif_private_key
-
-    def __repr__(self) -> str:
-        cls_name = self.__class__.__name__
-        key = self.private_key
-        return f'{cls_name}({key[:4]}...{key[-4:]}, uncompressed={self.__uncompressed})'
+        return f'{self.public_key_bytes.hex()}'
 
     def __ec_dbl(self, q: JacobianPoint) -> JacobianPoint:
         # Fast Prime Field Elliptic Curve Cryptography with 256 Bit Primes
@@ -213,17 +205,17 @@ class PublicKey:
     def __get_precomputes(self) -> None:
         dbl: JacobianPoint = secp256k1.gen_point
         for _ in range(256):
-            PublicKey.precomputes.append(dbl)
+            PublicKey.__precomputes.append(dbl)
             dbl = self.__ec_dbl(dbl)
 
     def __ec_mul(self, scalar: int) -> JacobianPoint:
         # https://paulmillr.com/posts/noble-secp256k1-fast-ecc/#fighting-timing-attacks
-        n = scalar % secp256k1.p_curve
+        n = scalar
         p = IDENTITY_POINT
         fake_p = IDENTITY_POINT
         fake_n = POW_2_256_M1 ^ n
 
-        for point in PublicKey.precomputes:
+        for point in PublicKey.__precomputes:
             q = point
             if n & 1:
                 p = self.__ec_add(p, q)
@@ -234,7 +226,7 @@ class PublicKey:
         return JacobianPoint(p.x, p.y, p.z)
 
     def __create_pubkey(self, *, uncompressed: bool = False) -> bytes:
-        raw_pubkey: Point = self.to_affine(self.__ec_mul(self.__private_key))
+        raw_pubkey: Point = self.to_affine(self.__ec_mul(self.private_key))
         if not self.valid_point(raw_pubkey):
             raise PointError('Point is not on curve')
 
@@ -254,11 +246,6 @@ class PublicKey:
 
     def __create_native_segwit(self, pubkey: bytes) -> str:
         return bech32.encode('bc', 0x00, ripemd160_sha256(pubkey))
-
-    def __to_wif(self, *, uncompressed: bool = False) -> str:
-        suffix = b'' if uncompressed else b'\x01'
-        privkey = b'\x80' + self.__private_key.to_bytes(32, 'big') + suffix
-        return base58.b58encode_check(privkey).decode('UTF-8')
 
     @staticmethod
     def modulo_inverse(n: int) -> int:
@@ -295,6 +282,7 @@ if __name__ == '__main__':
     my_key = PublicKey(0xFF, uncompressed=False)
     # assert my_key.public_key == '031B38903A43F7F114ED4500B4EAC7083FDEFECE1CF29C63528D563446F972C180'.lower()
     # assert my_key.public_key == '041B38903A43F7F114ED4500B4EAC7083FDEFECE1CF29C63528D563446F972C1804036EDC931A60AE889353F77FD53DE4A2708B26B6F5DA72AD3394119DAF408F9'.lower()
+
     print(my_key.public_key)
     print(my_key.wif_private_key)
     print(PrivateKey.to_wif(0xFF, uncompressed=True))
@@ -303,7 +291,6 @@ if __name__ == '__main__':
     print(my_key.nested_segwit_address)
     print(my_key.address)
     my_privkey = PrivateKey(0xFF)
-    print(my_privkey.generate)
     print(my_privkey.wif_private_key)
     print(PrivateKey.valid_key(0xC0FEE))
     b = (12312385769684547396095365029355369071957339694349689622296638024179682296192,
@@ -321,7 +308,10 @@ if __name__ == '__main__':
     # print(vars(my_key))
     # print(vars())
     # print([(key, value) for key, value in my_key.__dict__.items()])
-    t0 = perf_counter()
-    for i in range(1000):
-        PublicKey().public_key
-    print(perf_counter() - t0)
+    my_key2 = PublicKey(0xFF, uncompressed=True)
+    print(my_key2.hex_private_key)
+    print(my_key2.private_key)
+    print(my_key2.wif_private_key)
+    print(my_key2.public_key)
+    print(my_key2.native_segwit_address)
+    print(my_key2)
