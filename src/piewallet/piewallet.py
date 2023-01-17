@@ -23,14 +23,14 @@ class PointError(PieWalletException):
 
 class PrivateKey:
 
-    def __init__(self, private_key: int | None = None, /, *, uncompressed: bool = False) -> None:
-        if private_key is None:
-            private_key = randbelow(secp256k1.n_curve)
+    def __init__(self, privkey: int | None = None, /, *, uncompressed: bool = False) -> None:
+        if privkey is None:
+            privkey = randbelow(secp256k1.n_curve)
 
-        if not self.valid_key(private_key):
+        if not self.valid_key(privkey):
             raise PrivateKeyError('Invalid scalar/private key')
 
-        self.__private_key = private_key
+        self.__private_key = privkey
         self.__wif_private_key: str | None = None
         self.uncompressed = uncompressed
 
@@ -107,8 +107,8 @@ class PublicKey(PrivateKey):
 
     __precomputes: list[JacobianPoint] = []
 
-    def __init__(self, private_key: int | None = None, /, *, uncompressed: bool = False) -> None:
-        super().__init__(private_key, uncompressed=uncompressed)
+    def __init__(self, privkey: int | None = None, /, *, uncompressed: bool = False) -> None:
+        super().__init__(privkey, uncompressed=uncompressed)
         self.__public_key: bytes | None = None
         self.__address: str | None = None
         self.__nested_segwit_address: str | None = None
