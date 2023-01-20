@@ -408,14 +408,13 @@ class PublicKey(PrivateKey):
         if ver in self.__headers[0]:
             pubkey = self._create_pubkey(raw_pubkey, uncompressed=True)
             addr = self._create_address(pubkey)
-        elif ver in self.__headers[1]:
-            pubkey = self._create_pubkey(raw_pubkey)
+            return addr == address
+        pubkey = self._create_pubkey(raw_pubkey)
+        if ver in self.__headers[1]:
             addr = self._create_address(pubkey)
         elif ver in self.__headers[2]:
-            pubkey = self._create_pubkey(raw_pubkey)
             addr = self._create_nested_segwit(pubkey)
         elif ver in self.__headers[3]:
-            pubkey = self._create_pubkey(raw_pubkey)
             addr = self._create_native_segwit(pubkey)
         elif ver in self.__headers[4]:
             raise NotImplementedError()
