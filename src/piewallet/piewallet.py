@@ -346,8 +346,10 @@ class PublicKey(PrivateKey):
         m_hash = int.from_bytes(double_sha256(m_bytes), 'big')
         sig = self._sign(self.private_key, m_hash)
 
-        if address.startswith('bc'):
+        if address.startswith('bc1q'):
             ver = 3
+        elif address.startswith('bc1p'):
+            ver = 4
         else:
             if self.uncompressed:
                 ver = 0
@@ -355,15 +357,18 @@ class PublicKey(PrivateKey):
                 addr_bytes = base58.b58decode_check(address)
                 if addr_bytes.startswith(b'\x00'):
                     ver = 1
-                else:
+                elif addr_bytes.startswith(b'\x05'):
                     ver = 2
+                else:
+                    return f"Can't sign message with <{address}>"
         r = sig.r.to_bytes(32, 'big')
         s = sig.s.to_bytes(32, 'big')
         for header in self.__headers[ver]:
-            sig = base64.b64encode(header + r + s).decode('ascii')
-            verified = self.verify_message(address, message, sig)
+            signature = base64.b64encode(header + r + s).decode('ascii')
+            verified = self.verify_message(address, message, signature)
             if verified:
-                return sig
+                return signature
+        return f"Can't sign message with <{address}>"
 
     def bitcoin_message(self, address: str, message: str) -> None:
         print('-----BEGIN BITCOIN SIGNED MESSAGE-----')
@@ -374,7 +379,7 @@ class PublicKey(PrivateKey):
         print(self._sign_message(address, message))
         print('-----END BITCOIN SIGNATURE-----')
 
-    def verify_message(self, address: str, message: str, sig: str):
+    def verify_message(self, address: str, message: str, sig: str) -> bool:
         dsig = base64.b64decode(sig)
         if len(dsig) != 65:
             raise SignatureError("Signature must be 65 bytes long:", len(dsig))
