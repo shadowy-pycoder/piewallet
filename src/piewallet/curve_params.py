@@ -10,9 +10,7 @@ GEN_POINT = (0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
 
 
 class Point(NamedTuple):
-    '''
-    Point on an elliptic curve
-    '''
+    '''Point on an elliptic curve'''
     x: int
     y: int
 
