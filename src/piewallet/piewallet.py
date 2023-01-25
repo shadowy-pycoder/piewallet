@@ -1,4 +1,5 @@
 import base64
+import hmac
 from secrets import randbelow
 import sys
 from time import perf_counter
@@ -26,6 +27,10 @@ class PointError(PieWalletException):
 
 class SignatureError(PieWalletException):
     '''Invalid ECDSA signature parameters'''
+
+
+class MessageError(PieWalletException):
+    ...
 
 
 class PrivateKey:
@@ -311,27 +316,43 @@ class PublicKey(PrivateKey):
         except (TypeError, IndexError):  # Exception is raised when given arguments are invalid (non-integers)
             return False  # which also means point is not on curve
 
-    def msg_magic(self, message: str) -> str:
-        return "\x18Bitcoin Signed Message:\n" + chr(len(message)) + message
+    def _varint(self, length: int) -> bytes:
+        # https://en.bitcoin.it/wiki/Protocol_documentation#Variable_length_integer
+        if length < 0xFD:
+            return length.to_bytes(1, 'little')
+        elif length <= 0xFFFF:
+            return b'\xFD' + length.to_bytes(2, 'little')
+        elif length <= 0xFFFFFFFF:
+            return b'\xFE' + length.to_bytes(4, 'little')
+        elif length <= 0xFFFFFFFFFFFFFFFF:
+            return b'\xFF' + length.to_bytes(8, 'little')
+        else:
+            raise MessageError(f'Message is too lengthy: {length}')
+
+    def _msg_magic(self, message: str) -> bytes:
+        return b'\x18Bitcoin Signed Message:\n' + self._varint(len(message)) + message.encode('utf-8')
+
+    def _signed(self, privkey: int, mhash: int, k: int) -> Signature | None:
+        if not self.valid_key(k):
+            return
+        # when working with private keys, standard multiplication is used
+        point = self.to_affine(self._ec_mul(k))
+        r = point.x % secp256k1.n_curve
+        if r == 0 or point == IDENTITY_POINT:
+            return
+        s = self.mod_inverse(k, secp256k1.n_curve) * (mhash + privkey * r) % secp256k1.n_curve
+        if s == 0:
+            return
+        if s > secp256k1.n_curve // 2:  # https://github.com/bitcoin/bips/blob/master/bip-0062.mediawiki
+            s = secp256k1.n_curve - s
+        return Signature(r, s)
 
     def _sign(self, privkey: int, mhash: int, /) -> Signature:
         # https://learnmeabitcoin.com/technical/ecdsa#sign
         while True:
             k = self._generate()
-            if not self.valid_key(k):
-                continue
-            # when working with private keys, standard multiplication is used
-            point = self.to_affine(self._ec_mul(k))
-            r = point.x % secp256k1.n_curve
-            if r == 0 or point == IDENTITY_POINT:
-                continue
-            s = self.mod_inverse(k, secp256k1.n_curve) * (mhash + privkey * r) % secp256k1.n_curve
-            if s == 0:
-                continue
-            if s > secp256k1.n_curve // 2:  # https://github.com/bitcoin/bips/blob/master/bip-0062.mediawiki
-                s = secp256k1.n_curve - s
-            break
-        return Signature(r, s)
+            if (sig := self._signed(privkey, mhash, k)) is not None:
+                return sig
 
     def _verify(self, pubkey: Point, sig: Signature, mhash: int, /) -> bool:
         # https://learnmeabitcoin.com/technical/ecdsa#verify
@@ -341,11 +362,13 @@ class PublicKey(PrivateKey):
         pq = self.to_affine(self._ec_add(p, q))
         return pq.x == sig.r
 
-    def _sign_message(self, address: str, message: str) -> str:
-        m_bytes = self.msg_magic(message).encode('ascii')
+    def sign_message(self, address: str, message: str, /, *, deterministic=False) -> str:
+        m_bytes = self._msg_magic(message)
         m_hash = int.from_bytes(double_sha256(m_bytes), 'big')
-        sig = self._sign(self.private_key, m_hash)
-
+        if not deterministic:
+            sig = self._sign(self.private_key, m_hash)
+        else:
+            raise NotImplementedError('RFC6979 not implemented')
         if address.startswith('bc1q'):
             ver = 3
         elif address.startswith('bc1p'):
@@ -364,27 +387,27 @@ class PublicKey(PrivateKey):
         r = sig.r.to_bytes(32, 'big')
         s = sig.s.to_bytes(32, 'big')
         for header in self.__headers[ver]:
-            signature = base64.b64encode(header + r + s).decode('ascii')
+            signature = base64.b64encode(header + r + s).decode('utf-8')
             verified = self.verify_message(address, message, signature)
             if verified:
                 return signature
         return f"Can't sign message with <{address}>"
 
-    def bitcoin_message(self, address: str, message: str) -> None:
+    def bitcoin_message(self, address: str, message: str, /) -> None:
         print('-----BEGIN BITCOIN SIGNED MESSAGE-----')
         print(message)
         print('-----BEGIN BITCOIN SIGNATURE-----')
         print(address)
         print()
-        print(self._sign_message(address, message))
+        print(self.sign_message(address, message))
         print('-----END BITCOIN SIGNATURE-----')
 
-    def verify_message(self, address: str, message: str, sig: str) -> bool:
+    def verify_message(self, address: str, message: str, sig: str, /) -> bool:
         dsig = base64.b64decode(sig)
         if len(dsig) != 65:
             raise SignatureError("Signature must be 65 bytes long:", len(dsig))
         ver = dsig[:1]
-        m_bytes = self.msg_magic(message).encode('ascii')
+        m_bytes = self._msg_magic(message)
         z = int.from_bytes(double_sha256(m_bytes), 'big')
         header, r, s = dsig[0], int.from_bytes(dsig[1:33], 'big'), int.from_bytes(dsig[33:], 'big')
         if header < 27 or header > 42:
@@ -427,10 +450,22 @@ class PublicKey(PrivateKey):
             raise SignatureError("Header byte out of range:", header)
         return addr == address
 
+    def rfc(self):
+        pass
+
 
 class PieWallet(PublicKey):
     def __init__(self):
         super().__init__()
+
+    def print_wallet(self, *, sensitive=False) -> None:
+        print('\nPublic key (HEX):\n', self.public_key)
+        print('\nLegacy addrres (P2PKH):\n', self.address)
+        if not self.uncompressed:
+            print('\nNested Segwit address (P2WPKH-P2SH):\n', self.nested_segwit_address)
+            print('\nNative Segwit address (P2WPKH):\n', self.native_segwit_address)
+        if sensitive:
+            print('\nPrivate key (WIF):\n', self.wif_private_key)
 
 
 if __name__ == '__main__':
@@ -438,13 +473,18 @@ if __name__ == '__main__':
     print(my_key.wif_private_key)
     privkey = my_key.private_key
     pubkey = my_key.raw_public_key
-    message = 'ECDSA is the most fun I have ever experienced'
+    message = 'a' * 515
     m_hash = int.from_bytes(sha256(message.encode('ascii')), 'big')
     nonce = 12345
-    address = my_key.native_segwit_address
+    address = my_key.nested_segwit_address
     sig, odd = my_key._sign(privkey, m_hash)
     sig_real = 'G0PUXl2I51DzDEkTZJqWZZFf67X8ipazXLLgLhW28PYrFHMhsVrDzuDJtLbAcMUDFrz5uu7XSdXghDdIVw0P/W0='
     decoded = base64.b64decode(sig_real).hex()
     print(int(decoded[:2], 16), int(decoded[2:66], 16), int(decoded[66:], 16))
     print(my_key.verify_message(address, message, sig_real))
     my_key.bitcoin_message(address, message)
+    my_key2 = PieWallet()
+    my_key2.uncompressed = True
+    print(len(message))
+    my_key2.print_wallet(sensitive=True)
+    my_key2.sign_message(address, message, deterministic=False)
