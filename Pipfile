@@ -6,6 +6,7 @@ name = "pypi"
 [packages]
 base58 = "*"
 bech32 = "*"
+ripemd-hash = "*"
 
 [dev-packages]
 autopep8 = "*"

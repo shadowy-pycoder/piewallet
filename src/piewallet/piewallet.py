@@ -1,5 +1,6 @@
 import base64
 import hmac
+from hashlib import sha256
 from secrets import randbelow
 import sys
 from time import perf_counter
@@ -8,9 +9,8 @@ import base58
 import bech32  # type: ignore
 
 from curve_params import secp256k1, JacobianPoint, Point, Signature, IDENTITY_POINT, POW_2_256_M1
-from functions.double_sha256 import double_sha256
-from functions.ripemd160_sha256 import ripemd160_sha256
-from functions.sha256 import sha256
+from rfc6979 import bits_to_int, int_to_oct, bits_to_oct
+from utils import ripemd160_sha256, double_sha256
 
 
 class PieWalletException(Exception):
@@ -27,10 +27,6 @@ class PointError(PieWalletException):
 
 class SignatureError(PieWalletException):
     '''Invalid ECDSA signature parameters'''
-
-
-class MessageError(PieWalletException):
-    ...
 
 
 class PrivateKey:
@@ -327,7 +323,7 @@ class PublicKey(PrivateKey):
         elif length <= 0xFFFFFFFFFFFFFFFF:
             return b'\xFF' + length.to_bytes(8, 'little')
         else:
-            raise MessageError(f'Message is too lengthy: {length}')
+            raise SignatureError(f'Message is too lengthy: {length}')
 
     def _msg_magic(self, message: str) -> bytes:
         return b'\x18Bitcoin Signed Message:\n' + self._varint(len(message)) + message.encode('utf-8')
@@ -354,6 +350,37 @@ class PublicKey(PrivateKey):
             if (sig := self._signed(privkey, mhash, k)) is not None:
                 return sig
 
+    def _rfc_sign(self, x: int, hm: int, q: int):
+        qlen = q.bit_length()
+        qolen = qlen >> 3
+        rolen = (qlen + 7) >> 3
+        h1 = hm.to_bytes(32, 'big')
+        V = b'\x01' * 32
+        K = b'\x00' * 32
+        m1 = b'\x00' + int_to_oct(x, rolen) + bits_to_oct(h1, q, qlen, rolen)
+        m2 = b'\x01' + int_to_oct(x, rolen) + bits_to_oct(h1, q, qlen, rolen)
+
+        K = hmac.new(K, digestmod=sha256)
+        K.update(V + m1)
+        K = K.digest()
+        V = hmac.new(K, V, digestmod=sha256).digest()
+        K = hmac.new(K, digestmod=sha256)
+        K.update(V + m2)
+        K = K.digest()
+        V = hmac.new(K, V, digestmod=sha256).digest()
+        while True:
+            T = b''
+            while len(T) < qolen:
+                V = hmac.new(K, V, digestmod=sha256).digest()
+                T = T + V
+            k = bits_to_int(T, qlen)
+            if (sig := self._signed(x, hm, k)) is not None:
+                return sig
+            K = hmac.new(K, digestmod=sha256)
+            K.update(V + b'\x00')
+            K = K.digest()
+            V = hmac.new(K, V, digestmod=sha256).digest()
+
     def _verify(self, pubkey: Point, sig: Signature, mhash: int, /) -> bool:
         # https://learnmeabitcoin.com/technical/ecdsa#verify
         # when working with public keys, unsafe multiplication is used
@@ -368,7 +395,7 @@ class PublicKey(PrivateKey):
         if not deterministic:
             sig = self._sign(self.private_key, m_hash)
         else:
-            raise NotImplementedError('RFC6979 not implemented')
+            sig = self._rfc_sign(self.private_key, m_hash, secp256k1.n_curve)
         if address.startswith('bc1q'):
             ver = 3
         elif address.startswith('bc1p'):
@@ -393,13 +420,13 @@ class PublicKey(PrivateKey):
                 return signature
         return f"Can't sign message with <{address}>"
 
-    def bitcoin_message(self, address: str, message: str, /) -> None:
+    def bitcoin_message(self, address: str, message: str, /, *, deterministic=False) -> None:
         print('-----BEGIN BITCOIN SIGNED MESSAGE-----')
         print(message)
         print('-----BEGIN BITCOIN SIGNATURE-----')
         print(address)
         print()
-        print(self.sign_message(address, message))
+        print(self.sign_message(address, message, deterministic=deterministic))
         print('-----END BITCOIN SIGNATURE-----')
 
     def verify_message(self, address: str, message: str, sig: str, /) -> bool:
@@ -450,9 +477,6 @@ class PublicKey(PrivateKey):
             raise SignatureError("Header byte out of range:", header)
         return addr == address
 
-    def rfc(self):
-        pass
-
 
 class PieWallet(PublicKey):
     def __init__(self):
@@ -473,18 +497,7 @@ if __name__ == '__main__':
     print(my_key.wif_private_key)
     privkey = my_key.private_key
     pubkey = my_key.raw_public_key
-    message = 'a' * 515
-    m_hash = int.from_bytes(sha256(message.encode('ascii')), 'big')
+    message = 'ECDSA is the most fun I have ever experienced'
     nonce = 12345
-    address = my_key.nested_segwit_address
-    sig, odd = my_key._sign(privkey, m_hash)
-    sig_real = 'G0PUXl2I51DzDEkTZJqWZZFf67X8ipazXLLgLhW28PYrFHMhsVrDzuDJtLbAcMUDFrz5uu7XSdXghDdIVw0P/W0='
-    decoded = base64.b64decode(sig_real).hex()
-    print(int(decoded[:2], 16), int(decoded[2:66], 16), int(decoded[66:], 16))
-    print(my_key.verify_message(address, message, sig_real))
-    my_key.bitcoin_message(address, message)
-    my_key2 = PieWallet()
-    my_key2.uncompressed = True
-    print(len(message))
-    my_key2.print_wallet(sensitive=True)
-    my_key2.sign_message(address, message, deterministic=False)
+    address = my_key.address
+    my_key.bitcoin_message(address, message, deterministic=True)
