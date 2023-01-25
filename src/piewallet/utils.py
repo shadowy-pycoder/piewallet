@@ -1,6 +1,6 @@
 import hashlib
 
-from ripemd.ripemd160 import ripemd160
+from ripemd.ripemd160 import ripemd160  # type: ignore
 
 
 def double_sha256(b: bytes) -> bytes:

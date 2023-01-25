@@ -10,7 +10,7 @@ import bech32  # type: ignore
 
 from curve_params import secp256k1, JacobianPoint, Point, Signature, IDENTITY_POINT, POW_2_256_M1
 from rfc6979 import bits_to_int, int_to_oct, bits_to_oct
-from utils import ripemd160_sha256, double_sha256
+from utils import ripemd160_sha256, double_sha256  # type: ignore
 
 
 class PieWalletException(Exception):
@@ -330,15 +330,15 @@ class PublicKey(PrivateKey):
 
     def _signed(self, privkey: int, mhash: int, k: int) -> Signature | None:
         if not self.valid_key(k):
-            return
+            return None
         # when working with private keys, standard multiplication is used
         point = self.to_affine(self._ec_mul(k))
         r = point.x % secp256k1.n_curve
         if r == 0 or point == IDENTITY_POINT:
-            return
+            return None
         s = self.mod_inverse(k, secp256k1.n_curve) * (mhash + privkey * r) % secp256k1.n_curve
         if s == 0:
-            return
+            return None
         if s > secp256k1.n_curve // 2:  # https://github.com/bitcoin/bips/blob/master/bip-0062.mediawiki
             s = secp256k1.n_curve - s
         return Signature(r, s)
@@ -350,10 +350,10 @@ class PublicKey(PrivateKey):
             if (sig := self._signed(privkey, mhash, k)) is not None:
                 return sig
 
-    def _rfc_sign(self, x: int, hm: int, q: int):
+    def _rfc_sign(self, x: int, hm: int, q: int) -> Signature:
         qlen = q.bit_length()
         qolen = qlen >> 3
-        rolen = (qlen + 7) >> 3
+        rolen = qlen + 7 >> 3
         h1 = hm.to_bytes(32, 'big')
         V = b'\x01' * 32
         K = b'\x00' * 32
@@ -494,10 +494,8 @@ class PieWallet(PublicKey):
 
 if __name__ == '__main__':
     my_key = PublicKey(112757557418114203588093402336452206775565751179231977388358956335153294300646)
-    print(my_key.wif_private_key)
     privkey = my_key.private_key
     pubkey = my_key.raw_public_key
     message = 'ECDSA is the most fun I have ever experienced'
-    nonce = 12345
     address = my_key.address
     my_key.bitcoin_message(address, message, deterministic=True)

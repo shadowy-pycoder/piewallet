@@ -41,13 +41,11 @@ def bits_to_oct(b: bytes, q: int, qlen: int, rolen: int) -> bytes:
 # H(m) - hash of the message
 
 
-def rfc_sign(x: int, m, q: int):
+def rfc_sign(x: int, m: int, q: int):
     qlen = q.bit_length()
     qolen = qlen >> 3
-    rolen = (qlen + 7) >> 3
-    h1 = sha256()
-    h1.update(b'sample')
-    h1 = h1.digest()
+    rolen = qlen + 7 >> 3
+    h1 = m.to_bytes(32, 'big')
     V = b'\x01' * 32
     K = b'\x00' * 32
     m1 = b'\x00' + int_to_oct(x, rolen) + bits_to_oct(h1, q, qlen, rolen)
@@ -61,7 +59,6 @@ def rfc_sign(x: int, m, q: int):
     K.update(V + m2)
     K = K.digest()
     V = hmac.new(K, V, digestmod=sha256).digest()
-    print(V)
     while True:
         T = b''
         while len(T) < qolen:
@@ -78,6 +75,7 @@ def rfc_sign(x: int, m, q: int):
         V = hmac.new(K, V, digestmod=sha256).digest()
 
 
+m = int(sha256(b'sample').hexdigest(), 16)
 # q = (q.bit_length() + 7) >> 3
-print(rfc_sign(x, 's', q))
+print(hex(rfc_sign(x, m, q)))
 # print(sha256('sample'.encode('utf-8')).hex())
