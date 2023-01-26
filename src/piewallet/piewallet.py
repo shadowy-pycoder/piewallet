@@ -10,7 +10,7 @@ import bech32  # type: ignore
 
 from curve_params import secp256k1, JacobianPoint, Point, Signature, IDENTITY_POINT, POW_2_256_M1
 from rfc6979 import bits_to_int, int_to_oct, bits_to_oct
-from utils import ripemd160_sha256, double_sha256  # type: ignore
+from utils import ripemd160_sha256, double_sha256, is_odd, mod_inverse  # type: ignore
 
 
 class PieWalletException(Exception):
@@ -262,7 +262,7 @@ class PublicKey(PrivateKey):
     def _create_pubkey(self, raw_pubkey: Point, /, *, uncompressed: bool = False) -> bytes:
         if uncompressed:
             return b'\x04' + raw_pubkey.x.to_bytes(32, 'big') + raw_pubkey.y.to_bytes(32, 'big')
-        prefix = b'\x03' if self._is_odd(raw_pubkey.y) else b'\x02'
+        prefix = b'\x03' if is_odd(raw_pubkey.y) else b'\x02'
         return prefix + raw_pubkey.x.to_bytes(32, 'big')
 
     def _create_address(self, pubkey: bytes, /) -> str:
@@ -276,18 +276,11 @@ class PublicKey(PrivateKey):
     def _create_native_segwit(self, pubkey: bytes, /) -> str:
         return bech32.encode('bc', 0x00, ripemd160_sha256(pubkey))
 
-    def _is_odd(self, n: int) -> bool:
-        return bool(n & 1)
-
-    @staticmethod
-    def mod_inverse(n: int, /, mod: int) -> int:
-        return pow(n, -1, mod)
-
     @staticmethod
     def to_affine(p: JacobianPoint, /) -> Point:
         """Convert jacobian point to affine point"""
-        inv_z = PublicKey.mod_inverse(p.z, secp256k1.p_curve)
-        inv_z2 = inv_z ** 2
+        inv_z = mod_inverse(p.z, secp256k1.p_curve)
+        inv_z2 = pow(inv_z, 2)
         x = (p.x * inv_z2) % secp256k1.p_curve
         y = (p.y * inv_z2 * inv_z) % secp256k1.p_curve
         return Point(x, y)
@@ -322,7 +315,7 @@ class PublicKey(PrivateKey):
     def _msg_magic(self, message: str) -> bytes:
         return b'\x18Bitcoin Signed Message:\n' + self._varint(len(message)) + message.encode('utf-8')
 
-    def _signed(self, privkey: int, mhash: int, k: int) -> Signature | None:
+    def _signed(self, privkey: int, msg: int, k: int) -> Signature | None:
         if not self.valid_key(k):
             return None
         # when working with private keys, standard multiplication is used
@@ -330,25 +323,25 @@ class PublicKey(PrivateKey):
         r = point.x % secp256k1.n_curve
         if r == 0 or point == IDENTITY_POINT:
             return None
-        s = self.mod_inverse(k, secp256k1.n_curve) * (mhash + privkey * r) % secp256k1.n_curve
+        s = mod_inverse(k, secp256k1.n_curve) * (msg + privkey * r) % secp256k1.n_curve
         if s == 0:
             return None
-        if s > secp256k1.n_curve // 2:  # https://github.com/bitcoin/bips/blob/master/bip-0062.mediawiki
+        if s > secp256k1.n_curve >> 1:  # https://github.com/bitcoin/bips/blob/master/bip-0062.mediawiki
             s = secp256k1.n_curve - s
         return Signature(r, s)
 
-    def _sign(self, privkey: int, mhash: int, /) -> Signature:
+    def _sign(self, privkey: int, msg: int, /) -> Signature:
         # https://learnmeabitcoin.com/technical/ecdsa#sign
         while True:
             k = self._generate()
-            if (sig := self._signed(privkey, mhash, k)) is not None:
+            if (sig := self._signed(privkey, msg, k)) is not None:
                 return sig
 
-    def _rfc_sign(self, x: int, hm: int, q: int) -> Signature:
+    def _rfc_sign(self, x: int, msg: int, q: int) -> Signature:
         qlen = q.bit_length()
         qolen = qlen >> 3
         rolen = qlen + 7 >> 3
-        h1 = hm.to_bytes(32, 'big')
+        h1 = msg.to_bytes(32, 'big')
         V = b'\x01' * 32
         K = b'\x00' * 32
         m1 = b'\x00' + int_to_oct(x, rolen) + bits_to_oct(h1, q, qlen, rolen)
@@ -368,28 +361,28 @@ class PublicKey(PrivateKey):
                 V = hmac.new(K, V, digestmod=sha256).digest()
                 T = T + V
             k = bits_to_int(T, qlen)
-            if (sig := self._signed(x, hm, k)) is not None:
+            if (sig := self._signed(x, msg, k)) is not None:
                 return sig
             K_ = hmac.new(K, digestmod=sha256)
             K_.update(V + b'\x00')
             K = K_.digest()
             V = hmac.new(K, V, digestmod=sha256).digest()
 
-    def _verify(self, pubkey: Point, sig: Signature, mhash: int, /) -> bool:
+    def _verify(self, pubkey: Point, sig: Signature, msg: int, /) -> bool:
         # https://learnmeabitcoin.com/technical/ecdsa#verify
         # when working with public keys, unsafe multiplication is used
-        p = self._ec_mul(self.mod_inverse(sig.s, secp256k1.n_curve) * mhash, secp256k1.gen_point)
-        q = self._ec_mul(self.mod_inverse(sig.s, secp256k1.n_curve) * sig.r, pubkey)
+        p = self._ec_mul(mod_inverse(sig.s, secp256k1.n_curve) * msg, secp256k1.gen_point)
+        q = self._ec_mul(mod_inverse(sig.s, secp256k1.n_curve) * sig.r, pubkey)
         pq = self.to_affine(self._ec_add(p, q))
         return pq.x == sig.r
 
     def sign_message(self, address: str, message: str, /, *, deterministic=False) -> str:
         m_bytes = self._msg_magic(message)
-        m_hash = int.from_bytes(double_sha256(m_bytes), 'big')
+        msg = int.from_bytes(double_sha256(m_bytes), 'big')
         if not deterministic:
-            sig = self._sign(self.private_key, m_hash)
+            sig = self._sign(self.private_key, msg)
         else:
-            sig = self._rfc_sign(self.private_key, m_hash, secp256k1.n_curve)
+            sig = self._rfc_sign(self.private_key, msg, secp256k1.n_curve)
         if address.startswith('bc1q'):
             ver = 3
         elif address.startswith('bc1p'):
@@ -423,16 +416,18 @@ class PublicKey(PrivateKey):
         print(self.sign_message(address, message, deterministic=deterministic))
         print('-----END BITCOIN SIGNATURE-----')
 
-    def verify_message(self, address: str, msg: str, sig: str, /) -> bool:
-        dsig = base64.b64decode(sig)
+    def verify_message(self, address: str, message: str, signature: str, /) -> bool:
+        dsig = base64.b64decode(signature)
         if len(dsig) != 65:
             raise SignatureError('Signature must be 65 bytes long:', len(dsig))
         ver = dsig[:1]
-        m_bytes = self._msg_magic(msg)
+        m_bytes = self._msg_magic(message)
         z = int.from_bytes(double_sha256(m_bytes), 'big')
         header, r, s = dsig[0], int.from_bytes(dsig[1:33], 'big'), int.from_bytes(dsig[33:], 'big')
-        if header < 27 or header > 42:
+        if header < 27 or header > 46:
             raise SignatureError('Header byte out of range:', header)
+        if header >= 43:
+            header -= 16
         if header >= 39:
             header -= 12
         elif header >= 35:
@@ -440,16 +435,15 @@ class PublicKey(PrivateKey):
         elif header >= 31:
             header -= 4
         recid = header - 27
-        x = r + secp256k1.n_curve * (recid // 2)
-        alpha = (pow(x, 3) + secp256k1.b_curve) % secp256k1.p_curve
-        beta = pow(alpha, (secp256k1.p_curve + 1) // 4, secp256k1.p_curve)
-        if (beta - recid) % 2 == 0:
-            y = beta
-        else:
+        x = r + secp256k1.n_curve * (recid >> 1)
+        alpha = pow(x, 3) + secp256k1.b_curve % secp256k1.p_curve
+        beta = pow(alpha, secp256k1.p_curve + 1 >> 2, secp256k1.p_curve)
+        y = beta
+        if is_odd(beta - recid):
             y = secp256k1.p_curve - beta
         R = Point(x, y)
         e = (-z) % secp256k1.n_curve
-        inv_r = self.mod_inverse(r, secp256k1.n_curve)
+        inv_r = mod_inverse(r, secp256k1.n_curve)
         p = self._ec_mul(s, R)
         q = self._ec_mul(e, secp256k1.gen_point)
         Q = self._ec_add(p, q)
@@ -487,9 +481,6 @@ class PieWallet(PublicKey):
 
 
 if __name__ == '__main__':
-    my_key = PublicKey(112757557418114203588093402336452206775565751179231977388358956335153294300646)
-    privkey = my_key.private_key
-    pubkey = my_key.raw_public_key
     message = 'ECDSA is the most fun I have ever experienced'
-    address = my_key.address
-    my_key.bitcoin_message(address, message, deterministic=True)
+    my_wallet = PieWallet()
+    my_wallet.sign_message(my_wallet.address, message, deterministic=True)
