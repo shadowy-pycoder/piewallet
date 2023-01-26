@@ -31,7 +31,7 @@ def bits_to_oct(b: bytes, q: int, qlen: int, rolen: int) -> bytes:
     return int_to_oct(z2, rolen)
 
 
-def rfc_sign(x: int, m: int, q: int):
+def rfc_sign(x: int, m: int, q: int) -> int:
     qlen = q.bit_length()
     qolen = qlen >> 3
     rolen = qlen + 7 >> 3

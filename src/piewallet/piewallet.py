@@ -423,12 +423,12 @@ class PublicKey(PrivateKey):
         print(self.sign_message(address, message, deterministic=deterministic))
         print('-----END BITCOIN SIGNATURE-----')
 
-    def verify_message(self, address: str, message: str, sig: str, /) -> bool:
+    def verify_message(self, address: str, msg: str, sig: str, /) -> bool:
         dsig = base64.b64decode(sig)
         if len(dsig) != 65:
             raise SignatureError('Signature must be 65 bytes long:', len(dsig))
         ver = dsig[:1]
-        m_bytes = self._msg_magic(message)
+        m_bytes = self._msg_magic(msg)
         z = int.from_bytes(double_sha256(m_bytes), 'big')
         header, r, s = dsig[0], int.from_bytes(dsig[1:33], 'big'), int.from_bytes(dsig[33:], 'big')
         if header < 27 or header > 42:
