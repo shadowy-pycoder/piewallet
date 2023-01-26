@@ -4,7 +4,7 @@ from hashlib import sha256
 
 def bits_to_int(b: bytes, qlen: int):
     # https://www.rfc-editor.org/rfc/rfc6979 section 2.3.2.
-    blen = len(b) * 8
+    blen = len(b) << 3
     b_int = int.from_bytes(b, 'big')
     if blen > qlen:
         b_int = b_int >> blen - qlen
@@ -16,9 +16,9 @@ def int_to_oct(x: int, rolen: int) -> bytes:
     xolen = x.bit_length() >> 3
     x_hex = f'{x:x}'
     if xolen < rolen:
-        x_hex = f'{x:0>{rolen*2}x}'
+        x_hex = f'{x:0>{rolen << 1}x}'
     elif xolen > rolen:
-        x_hex = x_hex[(xolen - rolen)*2:]
+        x_hex = x_hex[xolen - rolen << 1:]
     return bytes.fromhex(x_hex)
 
 

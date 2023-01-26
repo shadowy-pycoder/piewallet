@@ -482,5 +482,5 @@ class PieWallet(PublicKey):
 
 if __name__ == '__main__':
     message = 'ECDSA is the most fun I have ever experienced'
-    my_wallet = PieWallet()
-    my_wallet.sign_message(my_wallet.address, message, deterministic=True)
+    my_key = PublicKey(112757557418114203588093402336452206775565751179231977388358956335153294300646)
+    my_key.bitcoin_message(my_key.address, message, deterministic=True)
