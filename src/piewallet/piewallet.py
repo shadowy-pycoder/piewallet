@@ -14,19 +14,19 @@ from utils import ripemd160_sha256, double_sha256  # type: ignore
 
 
 class PieWalletException(Exception):
-    '''Base exception for PieWallet'''
+    """Base exception for PieWallet"""
 
 
 class PrivateKeyError(PieWalletException):
-    '''Private key is out of allowed range'''
+    """Private key is out of allowed range"""
 
 
 class PointError(PieWalletException):
-    '''Point is not on an elliptic curve'''
+    """Point is not on an elliptic curve"""
 
 
 class SignatureError(PieWalletException):
-    '''Invalid ECDSA signature parameters'''
+    """Invalid ECDSA signature parameters"""
 
 
 class PrivateKey:
@@ -34,27 +34,25 @@ class PrivateKey:
     def __init__(self, privkey: int | None = None, /, *, uncompressed: bool = False) -> None:
         if privkey is None:
             privkey = self._generate()
-
         if not self.valid_key(privkey):
             raise PrivateKeyError('Invalid scalar/private key')
-
         self.__private_key = privkey
         self.__wif_private_key: str | None = None
         self.uncompressed = uncompressed
 
     @property
     def private_key(self):
-        '''Returns private key (generated or user-supplied)'''
+        """Return private key (generated or user-supplied)"""
         return self.__private_key
 
     @property
     def hex_private_key(self) -> str:
-        '''Returns private key in HEX format'''
+        """Return private key in HEX format"""
         return f'0x{self.private_key:0>64x}'
 
     @property
     def wif_private_key(self) -> str:
-        '''Returns private key in WIF format'''
+        """Return private key in WIF format"""
         if self.__wif_private_key is None:
             self.__wif_private_key = self.to_wif(self.private_key, uncompressed=self.uncompressed)
         return self.__wif_private_key
@@ -65,12 +63,12 @@ class PrivateKey:
         return f'{cls_name}({key[:4]}...{key[-4:]}, uncompressed={self.uncompressed})'
 
     def _generate(self) -> int:
-        '''Generates cryptographically-secure random integer'''
+        """Generate cryptographically-secure random integer"""
         return randbelow(secp256k1.n_curve)
 
     @staticmethod
     def valid_key(scalar: int, /) -> bool:
-        '''Checks if an integer is within allowed range'''
+        """Check if an integer is within allowed range"""
         return isinstance(scalar, int) and not (scalar <= 0 or scalar >= secp256k1.n_curve)
 
     @staticmethod
@@ -79,23 +77,20 @@ class PrivateKey:
 
     @staticmethod
     def to_bytes(wif: str, /) -> tuple[bytes, bytes, bytes]:
-        '''Converts WIF private key to bytes'''
+        """Convert WIF private key to bytes"""
         if not isinstance(wif, str):
             raise PrivateKeyError('must be in WIF format')
-
         privkey = base58.b58decode(wif)
         return privkey[:1], privkey[1:-4], privkey[-4:]
 
     @staticmethod
     def to_int(wif: str, /, *, hexlify: bool = False) -> int | str:
-        '''Converts WIF private key to integer'''
+        """Convert WIF private key to integer"""
         if not isinstance(wif, str):
             raise PrivateKeyError('must be in WIF format')
-
         version, privkey, checksum = PrivateKey.to_bytes(wif)
         if not PrivateKey.valid_checksum(version, privkey, checksum):
             raise PrivateKeyError('invalid WIF checksum')
-
         privkey_int = int.from_bytes(
             privkey[:-1], 'big') if len(privkey) == 33 else int.from_bytes(privkey, 'big')
         if PrivateKey.valid_key(privkey_int):
@@ -106,7 +101,7 @@ class PrivateKey:
 
     @staticmethod
     def to_wif(privkey: int, /, *, uncompressed: bool = False) -> str:
-        '''Converts private key from integer to WIF format'''
+        """Convert private key from integer to WIF format"""
         if not PrivateKey.valid_key(privkey):
             raise PrivateKeyError('Invalid scalar/private key')
 
@@ -136,29 +131,29 @@ class PublicKey(PrivateKey):
 
     @property
     def address(self) -> str:
-        '''Returns Legacy bitcoin address (P2PKH)'''
+        """Return Legacy bitcoin address (P2PKH)"""
         if self.__address is None:
             self.__address = self._create_address(self.public_key_bytes)
         return self.__address
 
     @property
     def nested_segwit_address(self) -> str | None:
-        '''
-        Returns nested Segwit bitcoin address (P2WPKH-P2SH),
+        """
+        Return nested Segwit bitcoin address (P2WPKH-P2SH),
 
-        Returns None for uncompressed public keys
-        '''
+        Return None for uncompressed public keys
+        """
         if not self.uncompressed and self.__nested_segwit_address is None:
             self.__nested_segwit_address = self._create_nested_segwit(self.public_key_bytes)
         return self.__nested_segwit_address
 
     @property
     def native_segwit_address(self) -> str | None:
-        '''
-        Returns native SegWit bitcoin address (P2WPKH),
+        """
+        Return native SegWit bitcoin address (P2WPKH),
 
-        Returns None for uncompressed public keys
-        '''
+        Return None for uncompressed public keys
+        """
         if not self.uncompressed and self.__native_segwit_address is None:
             self.__native_segwit_address = self._create_native_segwit(self.public_key_bytes)
         return self.__native_segwit_address
@@ -171,14 +166,14 @@ class PublicKey(PrivateKey):
 
     @property
     def public_key_bytes(self) -> bytes:
-        '''Returns public key in bytes format'''
+        """Return public key in bytes format"""
         if self.__public_key is None:
             self.__public_key = self._create_pubkey(self.raw_public_key, uncompressed=self.uncompressed)
         return self.__public_key
 
     @property
     def public_key(self) -> str:
-        '''Returns public key in HEX format'''
+        """Return public key in HEX format"""
         return f'{self.public_key_bytes.hex()}'
 
     def _ec_dbl(self, q: JacobianPoint, /) -> JacobianPoint:
@@ -267,7 +262,6 @@ class PublicKey(PrivateKey):
     def _create_pubkey(self, raw_pubkey: Point, /, *, uncompressed: bool = False) -> bytes:
         if uncompressed:
             return b'\x04' + raw_pubkey.x.to_bytes(32, 'big') + raw_pubkey.y.to_bytes(32, 'big')
-
         prefix = b'\x03' if self._is_odd(raw_pubkey.y) else b'\x02'
         return prefix + raw_pubkey.x.to_bytes(32, 'big')
 
@@ -291,7 +285,7 @@ class PublicKey(PrivateKey):
 
     @staticmethod
     def to_affine(p: JacobianPoint, /) -> Point:
-        '''Converts jacobian point to affine point'''
+        """Convert jacobian point to affine point"""
         inv_z = PublicKey.mod_inverse(p.z, secp256k1.p_curve)
         inv_z2 = inv_z ** 2
         x = (p.x * inv_z2) % secp256k1.p_curve
@@ -300,12 +294,12 @@ class PublicKey(PrivateKey):
 
     @staticmethod
     def to_jacobian(p: Point, /) -> JacobianPoint:
-        '''Converts affine point to jacobian point'''
+        """Convert affine point to jacobian point"""
         return JacobianPoint(p.x, p.y, z=1)
 
     @staticmethod
     def valid_point(p: Point | tuple[int, int], /) -> bool:
-        '''Checks if a given point belongs to secp256k1 elliptic curve'''
+        """Check if a given point belongs to secp256k1 elliptic curve"""
         try:
             return (all(isinstance(i, int) for i in p) and
                     pow(p[1], 2) % secp256k1.p_curve == (pow(p[0], 3) + secp256k1.b_curve) % secp256k1.p_curve)
@@ -360,13 +354,13 @@ class PublicKey(PrivateKey):
         m1 = b'\x00' + int_to_oct(x, rolen) + bits_to_oct(h1, q, qlen, rolen)
         m2 = b'\x01' + int_to_oct(x, rolen) + bits_to_oct(h1, q, qlen, rolen)
 
-        K = hmac.new(K, digestmod=sha256)
-        K.update(V + m1)
-        K = K.digest()
+        K_ = hmac.new(K, digestmod=sha256)
+        K_.update(V + m1)
+        K = K_.digest()
         V = hmac.new(K, V, digestmod=sha256).digest()
-        K = hmac.new(K, digestmod=sha256)
-        K.update(V + m2)
-        K = K.digest()
+        K_ = hmac.new(K, digestmod=sha256)
+        K_.update(V + m2)
+        K = K_.digest()
         V = hmac.new(K, V, digestmod=sha256).digest()
         while True:
             T = b''
@@ -376,9 +370,9 @@ class PublicKey(PrivateKey):
             k = bits_to_int(T, qlen)
             if (sig := self._signed(x, hm, k)) is not None:
                 return sig
-            K = hmac.new(K, digestmod=sha256)
-            K.update(V + b'\x00')
-            K = K.digest()
+            K_ = hmac.new(K, digestmod=sha256)
+            K_.update(V + b'\x00')
+            K = K_.digest()
             V = hmac.new(K, V, digestmod=sha256).digest()
 
     def _verify(self, pubkey: Point, sig: Signature, mhash: int, /) -> bool:
@@ -432,13 +426,13 @@ class PublicKey(PrivateKey):
     def verify_message(self, address: str, message: str, sig: str, /) -> bool:
         dsig = base64.b64decode(sig)
         if len(dsig) != 65:
-            raise SignatureError("Signature must be 65 bytes long:", len(dsig))
+            raise SignatureError('Signature must be 65 bytes long:', len(dsig))
         ver = dsig[:1]
         m_bytes = self._msg_magic(message)
         z = int.from_bytes(double_sha256(m_bytes), 'big')
         header, r, s = dsig[0], int.from_bytes(dsig[1:33], 'big'), int.from_bytes(dsig[33:], 'big')
         if header < 27 or header > 42:
-            raise SignatureError("Header byte out of range:", header)
+            raise SignatureError('Header byte out of range:', header)
         if header >= 39:
             header -= 12
         elif header >= 35:
@@ -474,7 +468,7 @@ class PublicKey(PrivateKey):
         elif ver in self.__headers[4]:
             raise NotImplementedError()
         else:
-            raise SignatureError("Header byte out of range:", header)
+            raise SignatureError('Header byte out of range:', header)
         return addr == address
 
 

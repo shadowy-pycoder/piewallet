@@ -1,13 +1,5 @@
 import hmac
-# from functions.sha256 import sha256
 from hashlib import sha256
-
-h1 = sha256('sample'.encode('utf-8'))
-q = 0x4000000000000000000020108A2E0CC0D99F8A5EF
-x = 0x09A4D6792295A7F730FC3F2B49CBC0F62E862272F
-qlen = q.bit_length()
-rolen = (qlen + 7) >> 3
-rlen = rolen * 8
 
 
 def bits_to_int(b: bytes, qlen: int):
@@ -38,8 +30,6 @@ def bits_to_oct(b: bytes, q: int, qlen: int, rolen: int) -> bytes:
         z2 = z1
     return int_to_oct(z2, rolen)
 
-# H(m) - hash of the message
-
 
 def rfc_sign(x: int, m: int, q: int):
     qlen = q.bit_length()
@@ -51,13 +41,13 @@ def rfc_sign(x: int, m: int, q: int):
     m1 = b'\x00' + int_to_oct(x, rolen) + bits_to_oct(h1, q, qlen, rolen)
     m2 = b'\x01' + int_to_oct(x, rolen) + bits_to_oct(h1, q, qlen, rolen)
 
-    K = hmac.new(K, digestmod=sha256)
-    K.update(V + m1)
-    K = K.digest()
+    K_ = hmac.new(K, digestmod=sha256)
+    K_.update(V + m1)
+    K = K_.digest()
     V = hmac.new(K, V, digestmod=sha256).digest()
-    K = hmac.new(K, digestmod=sha256)
-    K.update(V + m2)
-    K = K.digest()
+    K_ = hmac.new(K, digestmod=sha256)
+    K_.update(V + m2)
+    K = K_.digest()
     V = hmac.new(K, V, digestmod=sha256).digest()
     while True:
         T = b''
@@ -65,17 +55,19 @@ def rfc_sign(x: int, m: int, q: int):
             V = hmac.new(K, V, digestmod=sha256).digest()
             T = T + V
         k = bits_to_int(T, qlen)
-        # if (sig := self._signed(x, m, k)) is not None:
-        # return sig
         if 0 < k < q:
             return k
-        K = hmac.new(K, digestmod=sha256)
-        K.update(V + b'\x00')
-        K = K.digest()
+        K_ = hmac.new(K, digestmod=sha256)
+        K_.update(V + b'\x00')
+        K = K_.digest()
         V = hmac.new(K, V, digestmod=sha256).digest()
 
 
-m = int(sha256(b'sample').hexdigest(), 16)
-# q = (q.bit_length() + 7) >> 3
-print(hex(rfc_sign(x, m, q)))
-# print(sha256('sample'.encode('utf-8')).hex())
+if __name__ == '__main__':
+    h1 = int(sha256(b'sample').hexdigest(), 16)
+    q = 0x4000000000000000000020108A2E0CC0D99F8A5EF
+    x = 0x09A4D6792295A7F730FC3F2B49CBC0F62E862272F
+    qlen = q.bit_length()
+    rolen = (qlen + 7) >> 3
+    rlen = rolen * 8
+    print(hex(rfc_sign(x, h1, q)))
